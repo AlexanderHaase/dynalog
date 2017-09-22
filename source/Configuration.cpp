@@ -164,6 +164,28 @@ namespace dynalog {
 			}
 
 			node->second.changes.insert = std::move( delayed );
+			node->second.update( true );
+		}
+		return result;
+	}
+
+
+
+	/// Remind the given priority which loggers it manages.
+	///
+	/// @param priority Priority of the policy to remind.
+	/// @return Boolean indication of if a policy was matched.
+	///
+	bool Configuration::update( int priority )
+	{
+		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
+
+		const auto node = policies.find( priority );
+		const bool result = node != policies.end();
+
+		if( result )
+		{
+			node->second.update( true );
 		}
 		return result;
 	}

@@ -23,8 +23,7 @@ namespace dynalog {
 		inline void resize( size_t size )
 		{
 			clear();
-			data = std::unique_ptr<uint8_t[]>( new uint8_t[ size ] );
-			capacity = size;
+			buffer = Buffer::create( size );
 		}
 
 		/// Destroy the contained object, if any.
@@ -32,10 +31,17 @@ namespace dynalog {
 		inline void clear( void )
 		{
 			if( ! empty() ) {
-				destructor( data.get() );
+				destructor( buffer->data() );
 				destructor = nullptr;
 				info = nullptr;
 			}
+		}
+
+		/// Size of current buffer.
+		///
+		inline size_t size( void ) const
+		{
+			return buffer == nullptr ? 0 : buffer->size();
 		}
 
 		/// Access the type_info of the contained object, if any.
@@ -73,7 +79,7 @@ namespace dynalog {
 		template < typename Type, typename ... Args >
 		Type & emplace( Args && ...args )
 		{
-			if( sizeof(Type) > capacity )
+			if( size() < sizeof(Type) )
 			{
 				resize( sizeof(Type) );
 			}
@@ -83,7 +89,7 @@ namespace dynalog {
 			}
 			destructor = &call_destructor<Type>;
 			info = &typeid(Type);
-			return *(new (data.get()) Type( std::forward<Args>( args )... ));
+			return *(new (buffer->data()) Type( std::forward<Args>( args )... ));
 		}
 
 		/// Access the buffer as an instance of Type.
@@ -92,7 +98,7 @@ namespace dynalog {
 		/// @return Reference to the stored object.
 		/// 
 		template < typename Type >
-		Type & as( void ) { return *reinterpret_cast<Type*>( data.get() ); }
+		Type & as( void ) { return *reinterpret_cast<Type*>( buffer->data() ); }
 
 		/// Const access the buffer as an instance of Type.
 		///
@@ -100,7 +106,7 @@ namespace dynalog {
 		/// @return Reference to the stored object.
 		/// 
 		template < typename Type >
-		const Type & as( void ) const { return *reinterpret_cast<const Type*>( data.get() ); }
+		const Type & as( void ) const { return *reinterpret_cast<const Type*>( buffer->data() ); }
 
 		inline ~ObjectBuffer() { clear(); }
 
@@ -113,9 +119,8 @@ namespace dynalog {
 		/// @param buffer Unique pointer to data area.
 		/// @param size Capacity of the data area.
 		///
-		inline ObjectBuffer( std::unique_ptr<uint8_t[]> && buffer, size_t size )
-		: data( std::move( buffer ) )
-		, capacity( size )
+		inline ObjectBuffer( Buffer::Pointer && buffer )
+		: buffer( std::move( buffer ) )
 		{}
 
 		/// Replace the internal buffer(destructs stored object).
@@ -123,17 +128,15 @@ namespace dynalog {
 		/// @param buffer Unique pointer to data area.
 		/// @param size Capacity of the data area.
 		///
-		inline void resize( std::unique_ptr<uint8_t[]> && buffer, size_t size )
+		inline void resize( Buffer::Pointer && buf)
 		{
 			clear();
-			data = std::move( buffer );
-			capacity = size;
+			buffer = std::move( buffer );
 		}
 
 	protected:
 		const std::type_info * info = nullptr;
 		void (* destructor)(void *) = nullptr;
-		std::unique_ptr<uint8_t[]> data;
-		size_t capacity = 0;
+		Buffer::Pointer buffer;
 	};
 }

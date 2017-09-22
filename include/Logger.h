@@ -64,10 +64,10 @@ namespace dynalog {
 		/// param builder R- or L-reference to builder invoked if logger enabled.
 		///
 		template < typename MessageBuilder >
-		void log( MessageBuilder && builder )
+		void log( const Level level, MessageBuilder && builder )
 		{
 			const auto destination = emitter.load( std::memory_order_relaxed );
-			if( destination )
+			if( destination && levels.test( static_cast<size_t>( level ) ) )
 			{
 				Message message;
 				builder( message );

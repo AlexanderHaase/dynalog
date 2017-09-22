@@ -148,7 +148,17 @@ namespace dynalog {
 		///
 		/// Orphaned loggers are offered to lower priority policies.
 		///
+		/// @param priority Priority of the policy to rescan.
+		/// @return Boolean indication of if a policy was matched.
+		///
 		bool rescan( int priority );
+
+		/// Remind the given priority which loggers it manages.
+		///
+		/// @param priority Priority of the policy to remind.
+		/// @return Boolean indication of if a policy was matched.
+		///
+		bool update( int priority );
 
 	protected:
 		/// Storage associating loggers to a policy.

@@ -167,6 +167,11 @@ namespace dynalog {
 		template < typename ... Args >
 		void format( Args && ... args )
 		{
+			const size_t required = sizeof( Body<Args...> );
+			if( buffer.size() < required )
+			{
+				buffer.resize( cached( required ) );
+			}
 			buffer.emplace< Body<Args...> >( std::forward<Args>( args )... );
 		}
 
@@ -183,7 +188,11 @@ namespace dynalog {
 		bool empty( void ) const { return buffer.empty(); }
 
 	protected:
-		ObjectBuffer buffer;
+		/// Return a cached buffer for the size, if available.
+		///
+		static Buffer::Pointer cached( size_t size );
+
+		ObjectBuffer buffer;	///< Storage for message contents.
 	};
 
 

@@ -1,77 +1,49 @@
-#include <memory>
-#include <array>
-#include <mutex>
 #include <thread>
 #include <dynalog/include/Message.h>
+#include <dynalog/include/Cache.h>
 
-/*
-template<size_t Capacity, size_t Qty>
-class BufferCache {
-public:
-	std::unique_ptr<uint8_t[]> acquire( void )
-	{
-		uint8_t * result;
+namespace dynalog {
+
+	/// Global cache--initialize two buckets per CPU.
+	///
+	static struct {
+
+		std::mutex mutex;	///< Protect initialization.
+		std::vector<std::unique_ptr<Cache> > caches;	///< Caches, lookup by hash of thread id.
+		size_t qty = 0;	///< Indicator of initialization.
+
+		void init( void )
 		{
 			std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
-			result = size ?  buffers[ --size ] : nullptr;
-		}
-		if( ! result )
-		{
-			result = new uint8_t[ Capacity ];
-		}
-		return std::unique_ptr<uint8_t[]>{ result, [&]( uint8_t * ptr ){ release( ptr ); } };
-	}
-
-protected:
-	void release( uint8_t * ptr )
-	{
-		{
-			std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
-			if( size < buffers.size() )
+			if( qty == 0 )
 			{
-				buffers[ size++ ] = ptr;
-				ptr = nullptr;
+				qty = 2 * std::thread::hardware_concurrency();
+				while( caches.size() < qty )
+				{
+					caches.emplace_back( new Cache{ 4096 - sizeof(Buffer), 128 } );
+				};
 			}
 		}
-		if( ptr )
+
+		Buffer::Pointer acquire( size_t size )
 		{
-			delete[] ptr;
-		}
-	}
-
-	std::mutex mutex;
-	size_t size = 0;
-	std::array<uint8_t*, Qty> buffers;
-};
-
-static struct {
-	std::mutex mutex;
-	BufferCache<4096,128> * caches = nullptr;
-	size_t qty;
-
-	void init( void )
-	{
-		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
-		if( caches == nullptr )
-		{
-			qty = 2 * std::thread::hardware_concurrency();
-			caches = new BufferCache<4096,128>[ qty ];
-		}
-	}
-
-	std::unique_ptr<uint8_t[]> acquire()
-	{
-		while( caches == nullptr )
-		{
-			init();
-		}
-		const auto id = std::this_thread::get_id();
-		const auto hash = std::hash<std::thread::id>{}( id );
-		const auto index = hash % qty;
+			while( qty == 0 )
+			{
+				init();
+			}
+			const auto id = std::this_thread::get_id();
+			const auto hash = std::hash<std::thread::id>{}( id );
+			const auto index = hash % qty;
 		
-		return caches[ index ].acquire();
+			return caches[ index ]->remove( size );
+		}
+	} cache;
+
+	Buffer::Pointer Message::cached( size_t size )
+	{
+		return cache.acquire( size );
 	}
-} globalCache;*/
+}
 
 ::std::ostream & operator << ( ::std::ostream & stream, const ::dynalog::Message & message )
 {

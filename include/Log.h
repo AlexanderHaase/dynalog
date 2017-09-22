@@ -33,16 +33,18 @@ namespace dynalog {
 
 // Instantiate an embedded logger with the given name
 //
-#define DYNALOG_EMBEDDED_LOGGER(name) \
-	::dynalog::Logger name = { { ::dynalog::EmbeddedLoggerInit }, DYNALOG_DEFAULT_LEVELS, ::dynalog::Location{ DYNALOG_LOCATION }, ::dynalog::Context{ __PRETTY_FUNCTION__ } }
+#define DYNALOG_EMBEDDED_LOGGER(name, CONTEXT) \
+	::dynalog::Logger name = { { ::dynalog::EmbeddedLoggerInit }, DYNALOG_DEFAULT_LEVELS, ::dynalog::Location{ DYNALOG_LOCATION }, ::dynalog::Context{ CONTEXT } }
 
 
 // Logging macro-- comma-separated objects are concatinated with ostream <<.
 //
-#define DYNALOG( TAG, LEVEL, ... )	\
+#define DYNALOG_TAG( TAG, LEVEL, ... )	\
 	do {						\
-		static DYNALOG_EMBEDDED_LOGGER(dynalog_generated);	\
-		dynalog_generated.log( [&]( ::dynalog::Message & message ) {	\
-			message.format( TAG, LEVEL, __VA_ARGS__ );	\
+		static DYNALOG_EMBEDDED_LOGGER(dynalog_generated, TAG);	\
+		dynalog_generated.log( LEVEL, [&]( ::dynalog::Message & message ) {	\
+			message.format( __VA_ARGS__ );	\
 		});	\
 	} while( false )
+
+#define DYNALOG( LEVEL, ... )	DYNALOG_TAG( __PRETTY_FUNCTION__, LEVEL, __VA_ARGS__ )
