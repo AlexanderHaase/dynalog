@@ -1,20 +1,10 @@
 #pragma once
 #include <dynalog/include/ObjectBuffer.h>
+#include <dynalog/include/util.h>
 #include <typeindex>
 #include <ostream>
 
 namespace dynalog {
-
-	/// C++14 adds std::make_index_sequence< N >
-	///
-	template < size_t Current, size_t ... Remainder >
-	struct IndexSequence {};
-
-	template < size_t N, size_t ...Seq>
-	struct GenerateIndexSequence : GenerateIndexSequence< N-1, N-1, Seq... >{};
-
-	template < size_t ...Seq >
-	struct GenerateIndexSequence<0, Seq...> { using type = IndexSequence<Seq...>; };
 
 	/// Messages encapsulate data in a portable closure.
 	///

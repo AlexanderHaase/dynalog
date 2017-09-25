@@ -2,25 +2,10 @@
 
 #include <mutex>
 #include <vector>
+#include <dynalog/include/util.h>
 #include <dynalog/include/Buffer.h>
 
 namespace dynalog {
-
-	/// Scope wrapper for mutex.
-	///
-	/// Usage: with( mutex, <lambda> ) -> <lambda result>
-	///
-	/// @tparam Func function to apply in mutex scope.
-	/// @param mutex Protect func invoctation.
-	/// @param func Invoke with mutex locked.
-	/// @return Result of function.
-	///
-	template < typename Func >
-	auto with( std::mutex & mutex, Func && func ) -> decltype( func() )
-	{
-		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
-		return func();
-	}	
 
 	/// Cache for buffers of a fixed size.
 	///
