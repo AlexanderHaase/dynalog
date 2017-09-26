@@ -29,7 +29,7 @@ namespace dynalog { namespace async {
 		template < typename Func >
 		auto with( Func && func ) -> decltype( func( declref<T>() ) )
 		{
-			std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
+			std::unique_lock<std::mutex> lock( mutex );
 			return func( variable );
 		}
 
@@ -42,7 +42,7 @@ namespace dynalog { namespace async {
 		template < typename Func >
 		auto with( Func && func ) -> decltype( func( declref<T>(), declref<std::unique_lock<std::mutex>>() ) )
 		{
-			std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
+			std::unique_lock<std::mutex> lock( mutex );
 			return func( variable, lock );
 		}
 

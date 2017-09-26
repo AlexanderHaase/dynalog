@@ -122,6 +122,16 @@ int main( int argc, const char ** argv )
 	dynalog::global::configuration.update( dynalog::global::priority );
 	benchmark.measure( "DynaLog(<disabled>)", callable );
 
+	dynalog::async::LatencyQueue<size_t> queue{ std::chrono::milliseconds( 1 ), 128, 1 };
+	dynalog::async::Dispatcher disp(std::chrono::steady_clock::duration::zero());
+	auto dispatcher = std::make_shared<dynalog::async::Dispatcher>(std::chrono::steady_clock::duration::zero());
+	dispatcher->run();
+	auto deferredEmitter = std::make_shared<dynalog::async::DeferredEmitter>( dispatcher, emitter.get() );
+
+	dynalog::global::policy.configure( deferredEmitter.get() );
+	dynalog::global::configuration.update( dynalog::global::priority );
+	benchmark.measure( "DynaLog(<async>'/dev/null')", callable );
+
 	benchmark.log(std::cout);
 	return 0;
 }

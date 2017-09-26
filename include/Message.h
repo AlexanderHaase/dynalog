@@ -160,7 +160,8 @@ namespace dynalog {
 			const size_t required = sizeof( Body<Args...> );
 			if( buffer.size() < required )
 			{
-				buffer.resize( cached( required ) );
+				buffer.resize( required );
+				//buffer.resize( cached( required ) );
 			}
 			buffer.emplace< Body<Args...> >( std::forward<Args>( args )... );
 		}

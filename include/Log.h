@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <dynalog/include/Configuration.h>
+#include <dynalog/include/async/Emitter.h>
 
 namespace dynalog {
 

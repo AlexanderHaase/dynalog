@@ -27,7 +27,10 @@ namespace dynalog {
 			return Pointer{ new (data) Buffer{ size, std::forward<Deleter>( del ) } };
 		}
 
-		static inline Pointer create( size_t size ) { return create( size, []( Buffer * buffer ){ delete buffer; }); }
+		static inline Pointer create( size_t size ) { return create( size, []( Buffer * buffer ){ delete[] reinterpret_cast<uint8_t*>( buffer ); }); }
+
+		inline static void destroy( Pointer & buffer ) { buffer->~Buffer(); delete[] reinterpret_cast<uint8_t*>( buffer.release() ); }
+		inline static void destroy( Buffer * buffer ) { buffer->~Buffer(); delete[] reinterpret_cast<uint8_t*>( buffer ); }
 
 	protected:
 		template < typename Deleter >

@@ -4,6 +4,7 @@
 #include <vector>
 #include <condition_variable>
 #include <dynalog/include/async/Replicated.h>
+#include <cassert>
 
 namespace dynalog { namespace async {
 
@@ -39,7 +40,7 @@ namespace dynalog { namespace async {
 	///   - cache capacity.
 	///   - latency.
 	/// 
-	template < typename T, typename Clock = std::chrono::system_clock >
+	template < typename T, typename Clock = std::chrono::steady_clock >
 	class LatencyQueue {
 	protected:
 		struct IngressNode;
@@ -52,7 +53,23 @@ namespace dynalog { namespace async {
 		///
 		bool insert( T && value )
 		{
-			return ingresses.with( capture( std::move( value ), [this]( T && value, IngressNode & ingress ) -> bool
+			struct Request
+			{
+				T value;
+				LatencyQueue & queue;
+
+				bool operator() ( IngressNode & ingress )
+				{
+					const auto result = ingress.cache.size() < ingress.cache.capacity() || queue.receivers.with( ingress );
+					if( result )
+					{
+						ingress.cache.emplace_back( std::move( value ) );
+					}
+					return result;
+				}
+			};
+			return ingresses.with( Request{ std::move( value ), *this });
+			/*return ingresses.with( capture( std::move( value ), [this]( T && value, IngressNode & ingress ) -> bool
 			{
 				const auto result = ingress.cache.size() <= ingress.cache.capacity() || receivers.with( ingress );
 				if( result )
@@ -60,7 +77,7 @@ namespace dynalog { namespace async {
 					ingress.cache.emplace_back( std::move( value ) );
 				}
 				return result;
-			}));
+			}));*/
 		}
 
 		/// Remove elements until predicate indicates stop.
@@ -78,11 +95,23 @@ namespace dynalog { namespace async {
 			return receivers.with( index, Receiver<Pred,Func>{ std::forward<Pred>( pred ), std::forward<Func>( func ), *this });
 		}
 
+		/// Create a latency queue as specified.
+		///
+		/// For now, approximate two caches per ingress, divided equally among receivers.
+		///
+		/// @param latency Maximum latency between queue synchronizations.
+		/// @param capacity Maximum number of events to cache before synchronization.
+		/// @param receivers Number of receiver slots to create.
+		///
 		LatencyQueue( const typename Clock::duration & latency, size_t capacity, size_t receivers )
 		: ingresses( std::make_tuple( capacity ) )
-		, receivers( receivers, std::make_tuple( capacity, (1+ingresses.size()) / receivers, typename Clock::now() + latency ) )
+		, receivers( receivers, std::make_tuple( capacity, (1+ingresses.size()) / receivers, Clock::now() + latency ) )
 		, latency( latency )
 		{}
+
+		/// Number of receiver slots--each slot SHOULD be worked.
+		///
+		size_t const slots() const { return receivers.size(); }
 
 	protected:
 		/// Cache for inserted items. Items sit here until the cache
@@ -146,7 +175,7 @@ namespace dynalog { namespace async {
 					cache.reserve( capacity );
 					empty.emplace_back( std::move( cache ) );
 				}
-				cache = drain.begin();
+				cache = drain.end();
 			}
 
 			std::condition_variable condition;
@@ -177,12 +206,21 @@ namespace dynalog { namespace async {
 					if( drain.size() )
 					{
 						lock.unlock();
-						for(; cache != drain.end() && !finished ; ++cache )
+						for(;;)
 						{
 							for( ;item != cache->end() && !finished; ++item )
 							{
 								func( std::move( *item ) );
 								finished = pred();
+							}
+							
+							if( !finished && ++cache != drain.end() )
+							{
+								item = cache->begin();
+							}
+							else
+							{
+								break;
 							}
 						}
 						lock.lock();
@@ -208,21 +246,29 @@ namespace dynalog { namespace async {
 					//
 					if( ready.size() == 0 )
 					{
-						const auto result = condition.wait_until( lock, deadline, [this]{ return drain.size(); });
+						const std::cv_status result = condition.wait_until( lock, deadline );
 
 						// Skip sweep if sleep was interrupted.
 						//
 						if( result == std::cv_status::timeout )
 						{
-							deadline = typename Clock::now() + queue.latency;
+							deadline = Clock::now() + queue.latency;
 
 							// Scan only every nth ingress to divide ingresses among receivers.
 							//
 							const auto increment = queue.receivers.size();
+							lock.unlock();
 							for( size_t index = threadindex( increment ); index < queue.ingresses.size(); index += increment )
 							{
-								queue.ingresses.with( index, *this );
+								queue.ingresses.with( index, [index,&queue]( IngressNode & ingress )
+								{
+									if( ingress.cache.size() )
+									{
+										queue.receivers.with( index, ingress );
+									}
+								});
 							}
+							lock.lock();
 						}
 					}
 
@@ -245,7 +291,7 @@ namespace dynalog { namespace async {
 			///
 			bool operator() ( IngressNode & ingress )
 			{
-				const auto result = ingress.cache.size() && ready.size() < ready.capacity() && empty.size();
+				const auto result = ready.size() < ready.capacity() && empty.size();
 				if( result )
 				{
 					ready.emplace_back( std::move( ingress.cache ) );

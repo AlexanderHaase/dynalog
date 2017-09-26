@@ -31,15 +31,9 @@ namespace dynalog {
 		/// @param size Capacity of buffers to create.
 		/// @param qty Number of buffers to cache.
 		///
-		inline Cache( size_t size, size_t qty )
-		: capacity( size )
-		, index( 0 )
-		{ slots.resize( qty ); }
+		Cache( size_t size, size_t qty );
 
-		~Cache()
-		{
-			while( index ) { delete slots[ --index ]; }
-		}
+		~Cache();
 
 	protected:
 		/// Return a buffer to the cache

@@ -20,7 +20,7 @@ namespace dynalog {
 	template < typename Func >
 	auto with( std::mutex & mutex, Func && func ) -> decltype( func() )
 	{
-		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
+		std::unique_lock<std::mutex> lock( mutex );
 		return func();
 	}
 
