@@ -49,35 +49,51 @@ namespace dynalog { namespace async {
 		/// Insert a value into the queue.
 		///
 		/// @param value R-reference to value to insert.
+		/// @param timeout Maximum time to wait space in the queue.
 		/// @return Boolean indication of success.
 		///
-		bool insert( T && value )
+		bool insert( T && value, const typename Clock::duration & timeout = Clock::duration::zero() )
 		{
 			struct Request
 			{
 				T value;
 				LatencyQueue & queue;
+				const typename Clock::duration & timeout;
 
-				bool operator() ( IngressNode & ingress )
+				/// Place the value in the ingress cache if there's space before the timeout elapses.
+				///
+				bool operator() ( IngressNode & ingress, std::unique_lock<std::mutex> & lock )
 				{
-					const auto result = ingress.cache.size() < ingress.cache.capacity() || queue.receivers.with( ingress );
-					if( result )
+					// Forward-allocate a constant deadline so we don't retry forever.
+					//
+					typename Clock::time_point deadline = Clock::time_point::min();
+					for(;;)
 					{
-						ingress.cache.emplace_back( std::move( value ) );
+						const auto result = ingress.cache.size() < ingress.cache.capacity() || queue.receivers.with( ingress );
+						if( result )
+						{
+							ingress.cache.emplace_back( std::move( value ) );
+						}
+						else if( timeout != Clock::duration::zero() )
+						{
+							// Create deadline if not set(defer potential syscall)
+							//
+							if( deadline == Clock::time_point::min() )
+							{
+								const auto now = Clock::now();
+								const auto computed = now + timeout;
+								deadline = computed > now ? computed : Clock::time_point::max();
+							}
+							if( ingress.condition.wait_until( lock, deadline ) == std::cv_status::no_timeout )
+							{
+								continue;
+							}
+						}
+						return result;
 					}
-					return result;
 				}
 			};
-			return ingresses.with( Request{ std::move( value ), *this });
-			/*return ingresses.with( capture( std::move( value ), [this]( T && value, IngressNode & ingress ) -> bool
-			{
-				const auto result = ingress.cache.size() <= ingress.cache.capacity() || receivers.with( ingress );
-				if( result )
-				{
-					ingress.cache.emplace_back( std::move( value ) );
-				}
-				return result;
-			}));*/
+			return ingresses.with( Request{ std::move( value ), *this, timeout } );
 		}
 
 		/// Remove elements until predicate indicates stop.
@@ -119,6 +135,7 @@ namespace dynalog { namespace async {
 		///
 		struct IngressNode
 		{
+			std::condition_variable condition;
 			std::vector<T> cache;
 
 			/// Try to push contents to a receiver, notifying them on success.
@@ -168,6 +185,7 @@ namespace dynalog { namespace async {
 				ready.reserve( caches );
 				empty.reserve( caches );
 				drain.reserve( caches );
+				waiting.reserve( caches );
 
 				for( size_t index = 0; index < caches; ++index )
 				{
@@ -182,6 +200,8 @@ namespace dynalog { namespace async {
 			std::vector< std::vector<T> > ready;	///< Caches ready to be drained
 			std::vector< std::vector<T> > empty;	///< Empty caches
 			std::vector< std::vector<T> > drain;	///< Caches in the process of draining.
+
+			std::vector< IngressNode * > waiting;	///< Condition nodes waiting for empty caches.
 
 			// Iterators for resuming draining
 			//
@@ -242,6 +262,14 @@ namespace dynalog { namespace async {
 					}
 					drain.clear();
 
+					// wake all waiting ingress since we have no idea about wait timeout...
+					//
+					for( auto && ingress : waiting )
+					{
+						ingress->condition.notify_all();
+					}
+					waiting.clear();
+
 					// Wait & sweep ingress for non-empty caches if none are ready.
 					//
 					if( ready.size() == 0 )
@@ -285,7 +313,7 @@ namespace dynalog { namespace async {
 				return true;
 			}
 			
-			/// Offload ingress cache contents.
+			/// Offload ingress cache contents, or register for wakeup.
 			///
 			/// @return True if cache was non-empty, offloaded, and replaced with an empty cache.
 			///
@@ -297,6 +325,10 @@ namespace dynalog { namespace async {
 					ready.emplace_back( std::move( ingress.cache ) );
 					ingress.cache = std::move( empty.back() );
 					empty.pop_back();
+				}
+				else
+				{
+					waiting.emplace_back( &ingress );
 				}
 				return result;
 			}

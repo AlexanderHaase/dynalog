@@ -14,7 +14,7 @@ namespace dynalog {
 
 	Cache::~Cache()
 	{
-		while( index ) { Buffer::destroy( slots[ --index ] ); }
+		while( index ) { delete slots[ --index ]; }
 	}
 
 	/// Get-or-create a buffer with the appropriate size.
@@ -58,7 +58,7 @@ namespace dynalog {
 		});
 		if( !cached )
 		{
-			Buffer::destroy( buffer );
+			delete buffer;
 		}
 	}
 }

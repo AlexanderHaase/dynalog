@@ -15,7 +15,10 @@ namespace dynalog { namespace async {
 
 		void run( void );
 
-		Dispatcher( std::chrono::steady_clock::duration latency = std::chrono::duration_cast<std::chrono::steady_clock::duration>( std::chrono::milliseconds( 1 ) ), size_t capacity = 128, size_t readers = 1 );
+		Dispatcher( const std::chrono::steady_clock::duration & latency = std::chrono::milliseconds( 1 ), 
+			const std::chrono::steady_clock::duration & timeout = std::chrono::steady_clock::duration::max(),
+			size_t capacity = 128,
+			size_t readers = 1 );
 
 	protected:
 		struct Action
@@ -35,6 +38,7 @@ namespace dynalog { namespace async {
 			~Worker();
 		};
 		LatencyQueue<Action> queue;
+		std::chrono::steady_clock::duration timeout;
 		std::vector<std::unique_ptr<Worker> > threads;
 	};
 

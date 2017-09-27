@@ -1,10 +1,18 @@
+#include <unistd.h>
+#include <cstring>
 #include <dynalog/include/async/Emitter.h>
 
 namespace dynalog { namespace async {
 
 	void Dispatcher::insert( Emitter * emitter, const Logger & logger, Message && message )
 	{
-		queue.insert( Action{ emitter, logger, std::move( message ) } );
+		const auto success = queue.insert( Action{ emitter, logger, std::move( message ) }, timeout );
+		if( ! success )
+		{
+			// Last-resort warning
+			//
+			dprintf( STDERR_FILENO, "Warning: dynalog::async::Dispatcher: Queue full, dropping message!\n" );
+		};
 	}
 
 	void Dispatcher::work( size_t index )
@@ -43,8 +51,12 @@ namespace dynalog { namespace async {
 		thread.join();
 	}
 
-	Dispatcher::Dispatcher( std::chrono::steady_clock::duration latency, size_t capacity, size_t readers )
+	Dispatcher::Dispatcher( const std::chrono::steady_clock::duration & latency, 
+			const std::chrono::steady_clock::duration & timeout,
+			size_t capacity,
+			size_t readers )
 	: queue( latency, capacity, readers )
+	, timeout( timeout )
 	{}
 
 	void DeferredEmitter::emit( const Logger & logger, Message && message )

@@ -1,9 +1,9 @@
 #include <unistd.h>
+#include <cstring>
 #include <sstream>
 #include <dynalog/include/HandleEmitter.h>
 #include <streambuf>
 #include <ostream>
-#include <cstring>
 
 namespace dynalog {
 
