@@ -26,7 +26,7 @@ namespace dynalog {
 
 	/// C++14 adds std::make_index_sequence< N >
 	///
-	template < size_t Current, size_t ... Remainder >
+	template < size_t ... Sequence >
 	struct IndexSequence {};
 
 	template < size_t N, size_t ...Seq>

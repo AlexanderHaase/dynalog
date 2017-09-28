@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <cstring>
 #include <iomanip>
@@ -116,6 +117,18 @@ int main( int argc, const char ** argv )
 
 	std::fstream stream( "/dev/null", std::ios_base::out );
 	benchmark.measure( "fstream('/dev/null')", [&stream]() { stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl; } );
+
+	benchmark.measure( "stringstream(<internal buffer>)", []()
+	{
+		std::stringstream stream;
+		stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl;
+	});
+	benchmark.measure( "stringstream(<internal buffer>) => write('/dev/null')", [devnull]()
+	{
+		std::stringstream stream;
+		stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl;
+		return write( devnull, stream.str().c_str(), stream.str().size() );
+	});
 
 	std::shared_ptr<dynalog::HandleEmitter> emitter;
 	emitter = std::make_shared<dynalog::HandleEmitter>( devnull );
