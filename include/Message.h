@@ -154,16 +154,25 @@ namespace dynalog {
 
 		/// Create a closure for the specified types
 		///
-		template < typename ... Args >
+		template < typename ... Args, typename Class = Body<Args...> >
 		void format( Args && ... args )
 		{
-			const size_t required = sizeof( Body<Args...> );
+			const size_t required = sizeof( Class );
 			if( buffer.size() < required )
 			{
 				buffer.resize( required );
 				//buffer.resize( cached( required ) );
 			}
 			buffer.emplace< Body<Args...> >( std::forward<Args>( args )... );
+		}
+
+		/// Helper to allow injecting of aribtrary class as the first 
+		/// template argument.
+		///
+		template < typename Class, typename ... Args >
+		void format( Args && ... args )
+		{
+			format<Args...,Class>( std::forward<Args>( args )... );
 		}
 
 		/// Accessor for content.

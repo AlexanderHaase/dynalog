@@ -1,5 +1,6 @@
 #include <dynalog/include/Log.h>
 #include <dynalog/include/HandleEmitter.h>
+#include <dynalog/include/async/Flush.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -10,8 +11,8 @@
 #include <iomanip>
 #include <unistd.h>
 
-template < size_t Iterations = 1000000, typename Callable >
-double usecPerCall( Callable && callable )
+template < size_t Iterations = 1000000, typename Callable, typename PostCondition >
+double usecPerCall( Callable && callable, PostCondition && condition )
 {
 	struct timeval begin, end;
 	gettimeofday( &begin, nullptr );
@@ -20,6 +21,8 @@ double usecPerCall( Callable && callable )
 	{
 		callable();
 	}
+
+	condition();
 
 	gettimeofday( &end, nullptr );
 
@@ -33,10 +36,17 @@ struct Benchmark
 {
 	std::vector<std::tuple<std::string, double> > results;
 
+
+	template< typename Callable, typename PostCondition >
+	void measure( const std::string & tag, Callable && callable, PostCondition && condition )
+	{
+		results.emplace_back( tag, usecPerCall( std::forward<Callable>( callable ), std::forward<PostCondition>( condition ) ) );
+	}
+
 	template< typename Callable >
 	void measure( const std::string & tag, Callable && callable )
 	{
-		results.emplace_back( tag, usecPerCall( std::forward<Callable>( callable ) ) );
+		measure( tag, std::forward<Callable>( callable ), []{} );
 	}
 
 	double worst( void )
@@ -129,7 +139,12 @@ int main( int argc, const char ** argv )
 
 	dynalog::global::policy.configure( deferredEmitter.get() );
 	dynalog::global::configuration.update( dynalog::global::priority );
-	benchmark.measure( "DynaLog(<async>'/dev/null')", callable );
+	benchmark.measure( "DynaLog(<async>'/dev/null')", callable, []
+	{
+		dynalog::async::Flush flush;
+		DYNALOG( dynalog::Level::VERBOSE, flush );
+		flush.wait();
+	});
 
 	benchmark.log(std::cout);
 	return 0;
