@@ -12,7 +12,7 @@
 #include <iomanip>
 #include <unistd.h>
 
-template < size_t Iterations = 1000000, typename Callable, typename PostCondition >
+template < size_t Iterations = 10000000, typename Callable, typename PostCondition >
 double usecPerCall( Callable && callable, PostCondition && condition )
 {
 	struct timeval begin, end;

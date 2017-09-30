@@ -54,8 +54,9 @@ namespace dynalog { namespace async {
 	Dispatcher::Dispatcher( const std::chrono::steady_clock::duration & latency, 
 			const std::chrono::steady_clock::duration & timeout,
 			size_t capacity,
-			size_t readers )
-	: queue( latency, capacity, readers )
+			size_t heads,
+			size_t partitions )
+	: queue( latency, capacity, partitions, heads )
 	, timeout( timeout )
 	{}
 

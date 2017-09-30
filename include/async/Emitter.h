@@ -18,7 +18,8 @@ namespace dynalog { namespace async {
 		Dispatcher( const std::chrono::steady_clock::duration & latency = std::chrono::milliseconds( 1 ), 
 			const std::chrono::steady_clock::duration & timeout = std::chrono::steady_clock::duration::max(),
 			size_t capacity = 128,
-			size_t readers = 1 );
+			size_t heads = 1,
+			size_t partitions = 1 );
 
 	protected:
 		struct Action

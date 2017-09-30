@@ -45,6 +45,7 @@ namespace dynalog { namespace async {
 	protected:
 		struct IngressNode;
 		struct ReceiveNode;
+		struct ReadHead;
 	public:
 		/// Insert a value into the queue.
 		///
@@ -108,7 +109,10 @@ namespace dynalog { namespace async {
 		template < typename Pred, typename Func >
 		bool remove( size_t index, Pred && pred, Func && func )
 		{
-			return receivers.with( index, Receiver<Pred,Func>{ std::forward<Pred>( pred ), std::forward<Func>( func ), *this });
+			return receivers.with( index / heads, [&]( ReceiveNode & receive, std::unique_lock<std::mutex> & lock )
+			{
+				return receive.remove( index % heads, pred, func, *this, lock );
+			});
 		}
 
 		/// Create a latency queue as specified.
@@ -119,15 +123,16 @@ namespace dynalog { namespace async {
 		/// @param capacity Maximum number of events to cache before synchronization.
 		/// @param receivers Number of receiver slots to create.
 		///
-		LatencyQueue( const typename Clock::duration & latency, size_t capacity, size_t receivers )
+		LatencyQueue( const typename Clock::duration & latency, size_t capacity, size_t receivers, size_t heads )
 		: ingresses( std::make_tuple( capacity ) )
-		, receivers( receivers, std::make_tuple( capacity, (1+ingresses.size()) / receivers, Clock::now() + latency ) )
+		, receivers( receivers, std::make_tuple( heads, capacity, (1+ingresses.size()) / receivers, Clock::now() + latency ) )
 		, latency( latency )
+		, heads( heads )
 		{}
 
 		/// Number of receiver slots--each slot SHOULD be worked.
 		///
-		size_t const slots() const { return receivers.size(); }
+		size_t const slots() const { return receivers.size() * heads; }
 
 	protected:
 		/// Cache for inserted items. Items sit here until the cache
@@ -158,6 +163,84 @@ namespace dynalog { namespace async {
 			}
 		};
 
+		struct ReadHead 
+		{
+			bool occupied;				///< Indicate if node is in use.
+			std::vector< std::vector<T> > drain;	///< Caches in the process of draining.
+
+			// Iterators for resuming draining
+			//
+			typename std::vector< std::vector<T> >::iterator cache;
+			typename std::vector<T>::iterator item;
+
+			ReadHead( size_t caches )
+			: occupied( false )
+			{
+				drain.reserve( caches );
+				cache = drain.end();
+			}
+
+			// Resume draining elements. Returns last value indicated by predicate.
+			//
+			template < typename Pred, typename Func >
+			bool resume( Pred && pred, Func && func, std::unique_lock<std::mutex> & lock )
+			{
+				bool finished = pred();
+
+				// If elements are left to drain, resume draining until empty or pred().
+				//
+				if( drain.size() )
+				{
+					lock.unlock();
+					for(;;)
+					{
+						for( ;item != cache->end() && !finished; ++item )
+						{
+							func( std::move( *item ) );
+							finished = pred();
+						}
+						
+						if( !finished && ++cache != drain.end() )
+						{
+							item = cache->begin();
+						}
+						else
+						{
+							break;
+						}
+					}
+					lock.lock();
+				}
+
+				return finished;
+			}
+
+			// Prepare to receive the indicated caches
+			//
+			void load( std::vector< std::vector<T> > & ready )
+			{
+				std::swap( ready, drain );
+				cache = drain.begin();
+				if( cache != drain.end() )
+				{
+					item = cache->begin();
+				}
+			}
+
+			// Move empty cahces back for reuse.
+			//
+			void unload( std::vector< std::vector<T> > & empty )
+			{
+				
+				for( auto && cache : drain )
+				{
+					cache.clear();
+					empty.emplace_back( std::move( cache ) );
+				}
+				drain.clear();
+			}
+		};
+
 		/// Wait for, receive, and deque items. Ingress nodes offload
 		/// non-empty caches into 'ready' and get empty caches from 
 		/// 'empty'. 'drain', 'cache', and 'item' hold the partial
@@ -178,13 +261,12 @@ namespace dynalog { namespace async {
 			/// Initialize with specified number of caches each of
 			/// the specified capacity.
 			///
-			ReceiveNode( size_t capacity, size_t caches, const typename Clock::time_point & next )
-			: occupied( false )
-			, deadline( next )
+			ReceiveNode( size_t heads, size_t capacity, size_t caches, const typename Clock::time_point & next )
+			: deadline( next )
 			{
 				ready.reserve( caches );
 				empty.reserve( caches );
-				drain.reserve( caches );
+				readers.reserve( heads );
 				waiting.reserve( caches );
 
 				for( size_t index = 0; index < caches; ++index )
@@ -193,74 +275,40 @@ namespace dynalog { namespace async {
 					cache.reserve( capacity );
 					empty.emplace_back( std::move( cache ) );
 				}
-				cache = drain.end();
+				for( size_t index = 0; index < heads; ++index )
+				{
+					readers.emplace_back( caches );
+				}
 			}
 
 			std::condition_variable condition;
 			std::vector< std::vector<T> > ready;	///< Caches ready to be drained
 			std::vector< std::vector<T> > empty;	///< Empty caches
-			std::vector< std::vector<T> > drain;	///< Caches in the process of draining.
 
 			std::vector< IngressNode * > waiting;	///< Condition nodes waiting for empty caches.
+			std::vector< ReadHead > readers;
 
-			// Iterators for resuming draining
-			//
-			typename std::vector< std::vector<T> >::iterator cache;
-			typename std::vector<T>::iterator item;
-
-			bool occupied;	///<Indicate if receive is in progress.
 			typename Clock::time_point deadline;	///< Next time to drain
 
 			template < typename Pred, typename Func >
-			bool remove( Pred && pred, Func && func, LatencyQueue & queue, std::unique_lock<std::mutex> & lock )
+			bool remove( const size_t head, Pred && pred, Func && func, LatencyQueue & queue, std::unique_lock<std::mutex> & lock )
 			{
-				if( occupied ){ return false; }
-				occupied = true;
+				ReadHead & reader = readers[ head ];
+				if( reader.occupied ){ return false; }
+				reader.occupied = true;
 
 				for(;;)
 				{
-					bool finished = pred();
-
-					// If elements are left to drain, resume draining until empty or pred().
-					//
-					if( drain.size() )
-					{
-						lock.unlock();
-						for(;;)
-						{
-							for( ;item != cache->end() && !finished; ++item )
-							{
-								func( std::move( *item ) );
-								finished = pred();
-							}
-							
-							if( !finished && ++cache != drain.end() )
-							{
-								item = cache->begin();
-							}
-							else
-							{
-								break;
-							}
-						}
-						lock.lock();
-					}
-
 					// exit if predicate indicated.
 					//
-					if( finished )
+					if( reader.resume( pred, func, lock ) )
 					{
 						break;
 					}
 
 					// Return drained caches to the empty cache.
 					//
-					for( auto && cache : drain )
-					{
-						cache.clear();
-						empty.emplace_back( std::move( cache ) );
-					}
-					drain.clear();
+					reader.unload( empty );
 
 					// wake all waiting ingress since we have no idea about wait timeout...
 					//
@@ -302,14 +350,9 @@ namespace dynalog { namespace async {
 
 					// Prepare to drain ready caches.
 					//
-					std::swap( ready, drain );
-					cache = drain.begin();
-					if( cache != drain.end() )
-					{
-						item = cache->begin();
-					}
+					reader.load( ready );
 				}
-				occupied = false;
+				reader.occupied = false;
 				return true;
 			}
 			
@@ -336,7 +379,7 @@ namespace dynalog { namespace async {
 
 		/// Proxy object to bring predicate and function into receiver scope.
 		///
-		template < typename Pred, typename Func >
+		/*template < typename Pred, typename Func >
 		struct Receiver
 		{
 			Pred pred;
@@ -353,11 +396,12 @@ namespace dynalog { namespace async {
 			{
 				return receive.remove( pred, func, queue, lock );
 			}
-		};
+		};*/
 
 		Replicated< IngressNode > ingresses;
 		Replicated< ReceiveNode > receivers;
 		const typename Clock::duration latency;
+		const size_t heads;
 	};
 
 
