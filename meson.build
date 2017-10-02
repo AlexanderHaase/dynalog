@@ -2,7 +2,7 @@ project( 'c++ DynaLog', 'cpp',
 	version : '0.2.1', 
 	license : 'BSD 3-clause' )
 
-cpp_flags = [ '-std=c++11', '-g', '-O3' ]
+cpp_flags = [ '-std=c++11', '-g', '-Og' ]
 
 base_includes = include_directories( '../' ) 
 

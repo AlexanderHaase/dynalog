@@ -18,8 +18,8 @@ namespace dynalog {
 		: instance( std::forward<Check>( value ) )
 		{}
 
-		explicit operator T& () { return value; }
-		explicit operator const T & () { return value; }
+		operator T& () { return value; }
+		operator const T & () { return value; }
 
 		T & value() { return value; }
 		const T& value() const { return value; }
