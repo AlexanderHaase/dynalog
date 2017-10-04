@@ -11,15 +11,18 @@ Never delete a log statement. Reconfigure logging on the fly. DynaLog makes it f
 **Get results:**
 
 ```sh
-	dynalog/build$ ./comparison
-	Performance comparison of formatting output(relative to slowest):
-	0.54460 usec/call (1.00 x)	dprintf('/dev/null')
-	0.15918 usec/call (3.42 x)	snprintf(<internal buffer>)
-	0.23715 usec/call (2.30 x)	snprintf(<internal buffer>) => write('/dev/null')
-	0.17409 usec/call (3.13 x)	fstream('/dev/null')
-	0.37438 usec/call (1.45 x)	DynaLog('/dev/null')
-	0.06332 usec/call (8.60 x)	DynaLog(<NoOp>)
-	0.00077 usec/call (702.71 x)	DynaLog(<disabled>)
+dynalog/build$ ./comparison
+Performance comparison of formatting output(relative to slowest):
+0.57376 usec/call (1.52 x)	dprintf('/dev/null')
+0.17362 usec/call (5.01 x)	snprintf(<internal buffer>)
+0.25876 usec/call (3.36 x)	snprintf(<internal buffer>) => write('/dev/null')
+0.18724 usec/call (4.65 x)	fstream('/dev/null')
+0.55611 usec/call (1.57 x)	stringstream(<internal buffer>)
+0.87041 usec/call (1.00 x)	stringstream(<internal buffer>) => write('/dev/null')
+0.23405 usec/call (3.72 x)	DynaLog('/dev/null')
+0.03550 usec/call (24.52 x)	DynaLog(<NoOp>)
+0.00086 usec/call (1016.83 x)	DynaLog(<disabled>)
+0.20122 usec/call (4.33 x)	DynaLog(<async>'/dev/null')
 ```
 
 ---

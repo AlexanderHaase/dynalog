@@ -15,6 +15,24 @@ namespace dynalog { namespace async {
 		};
 	}
 
+	struct NoOpEmitter : Emitter {
+		virtual void emit( const Logger &, Message && ) {}
+	};
+
+	static NoOpEmitter flushEmitter;
+
+	void Dispatcher::flush( Flush & flush )
+	{
+		for( size_t index = 0; index < queue.size(); ++index )
+		{
+			Message message;
+			message.format( flush );
+			queue.insert( index,
+				Action{ &flushEmitter, *(const Logger*)( nullptr ), std::move( message ) },
+				timeout );
+		}
+	}
+
 	void Dispatcher::work( size_t index )
 	{
 		queue.remove( index,
@@ -33,14 +51,14 @@ namespace dynalog { namespace async {
 		}
 	}
 
-	Dispatcher::Worker::Worker(Dispatcher & dispatcher, size_t index)
+	Dispatcher::Worker::Worker(Dispatcher & dispatch, size_t idx)
 	: stop( false )
-	, dispatcher( dispatcher )
-	, index( index )
-	, thread( [&]
+	, dispatcher( dispatch )
+	, index( idx )
+	, thread( [this]
 	{
 		dispatcher.queue.remove( index, 
-			[&]{ return stop; },
+			[this]{ return stop; },
 			[]( Action && action ){ action.emitter->emit( action.logger, std::move( action.message ) ); });
 	})
 	{}
@@ -56,7 +74,7 @@ namespace dynalog { namespace async {
 			size_t capacity,
 			size_t heads,
 			size_t partitions )
-	: queue( latency, capacity, partitions, heads )
+	: queue( latency, capacity, 1, heads, partitions )
 	, timeout( timeout )
 	{}
 

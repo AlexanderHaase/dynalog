@@ -2,6 +2,7 @@
 
 #include <dynalog/include/Logger.h>
 #include <dynalog/include/async/LatencyQueue.h>
+#include <dynalog/include/async/Flush.h>
 
 namespace dynalog { namespace async {
 
@@ -20,6 +21,8 @@ namespace dynalog { namespace async {
 			size_t capacity = 128,
 			size_t heads = 1,
 			size_t partitions = 1 );
+
+		void flush( Flush & flush );
 
 	protected:
 		struct Action

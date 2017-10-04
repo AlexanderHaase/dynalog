@@ -12,7 +12,7 @@
 #include <iomanip>
 #include <unistd.h>
 
-template < size_t Iterations = 10000000, typename Callable, typename PostCondition >
+template < size_t Iterations = 1000000, typename Callable, typename PostCondition >
 double usecPerCall( Callable && callable, PostCondition && condition )
 {
 	struct timeval begin, end;
@@ -116,7 +116,7 @@ int main( int argc, const char ** argv )
 	});
 
 	std::fstream stream( "/dev/null", std::ios_base::out );
-	benchmark.measure( "fstream('/dev/null')", [&stream]() { stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl; } );
+	benchmark.measure( "fstream('/dev/null')", [&stream]() { stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl << std::flush; } );
 
 	benchmark.measure( "stringstream(<internal buffer>)", []()
 	{
@@ -129,9 +129,10 @@ int main( int argc, const char ** argv )
 		stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl;
 		return write( devnull, stream.str().c_str(), stream.str().size() );
 	});
-
+	
 	std::shared_ptr<dynalog::HandleEmitter> emitter;
 	emitter = std::make_shared<dynalog::HandleEmitter>( devnull );
+	
 	dynalog::global::policy.configure( emitter.get() );
 	dynalog::global::configuration.update( dynalog::global::priority );
 	benchmark.measure( "DynaLog('/dev/null')", callable );
@@ -144,18 +145,18 @@ int main( int argc, const char ** argv )
 	dynalog::global::policy.configure( nullptr );
 	dynalog::global::configuration.update( dynalog::global::priority );
 	benchmark.measure( "DynaLog(<disabled>)", callable );
-
+	
 	auto dispatcher = std::make_shared<dynalog::async::Dispatcher>( std::chrono::milliseconds( 1 ), 
-		std::chrono::seconds(10), 128, 1 );
+		std::chrono::seconds(10), 128, 4 );
 	dispatcher->run();
 	auto deferredEmitter = std::make_shared<dynalog::async::DeferredEmitter>( dispatcher, emitter.get() );
 
 	dynalog::global::policy.configure( deferredEmitter.get() );
 	dynalog::global::configuration.update( dynalog::global::priority );
-	benchmark.measure( "DynaLog(<async>'/dev/null')", callable, []
+	benchmark.measure( "DynaLog(<async>'/dev/null')", callable, [&dispatcher]
 	{
 		dynalog::async::Flush flush;
-		DYNALOG( dynalog::Level::VERBOSE, flush );
+		dispatcher->flush( flush );
 		flush.wait();
 	});
 

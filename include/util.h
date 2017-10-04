@@ -86,5 +86,6 @@ namespace dynalog {
 		std::forward<T>(x), std::forward<F>(f) );
 	}
 
-	inline size_t threadindex( size_t modulo ) { return std::hash<std::thread::id>{}( std::this_thread::get_id() ) % modulo; }
+	inline size_t threadindex( void ) { return std::hash<std::thread::id>{}( std::this_thread::get_id() ); }
+	inline size_t threadindex( size_t modulo ) { return threadindex() % modulo; }
 }

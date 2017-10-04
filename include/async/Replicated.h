@@ -74,7 +74,7 @@ namespace dynalog { namespace async {
 		template < typename Func >
 		auto with( Func && func ) -> decltype( func( declref<T>() ) )
 		{
-			return with( threadindex( size() ), std::forward<Func>( func ) );
+			return with( threadindex(), std::forward<Func>( func ) );
 		}
 
 		/// Visit the object relative to a specific hash without lock.
@@ -99,7 +99,7 @@ namespace dynalog { namespace async {
 		template < typename Func >
 		auto unprotected( Func && func ) -> decltype( func( declref<T>() ) )
 		{
-			return unprotected( threadindex( size() ), std::forward<Func>( func ) );
+			return unprotected( threadindex(), std::forward<Func>( func ) );
 		}
 
 		/// Create the replicated object set with a generator function.

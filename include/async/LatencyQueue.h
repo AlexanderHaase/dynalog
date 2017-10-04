@@ -4,11 +4,14 @@
 #include <vector>
 #include <condition_variable>
 #include <dynalog/include/async/Replicated.h>
+#include <dynalog/include/async/RingBuffer.h>
 #include <cassert>
 
 namespace dynalog { namespace async {
 
 	/// Concurrent queue oriented on maintaining a maximum latency.
+	///
+	/// TODO: update description post overhaul
 	///
 	/// To debounce reciever wakeup and associated contention, ingress
 	/// objects are first stored in a thread-associative cache of elements.
@@ -42,11 +45,74 @@ namespace dynalog { namespace async {
 	/// 
 	template < typename T, typename Clock = std::chrono::steady_clock >
 	class LatencyQueue {
-	protected:
-		struct IngressNode;
-		struct ReceiveNode;
-		struct ReadHead;
 	public:
+		/// Insert a value into the queue.
+		///
+		/// @param value R-reference to value to insert.
+		/// @param timeout Maximum time to wait space in the queue.
+		/// @return Boolean indication of success.
+		///
+		bool insert( size_t index, T && value, const typename Clock::duration & timeout = Clock::duration::zero() )
+		{
+			return caches.with( index, [&]( Cache & cache, std::unique_lock<std::mutex> & lock )
+			{
+				auto deadline = Clock::time_point::min();
+				Ticket ticket{ cache.condition, lock };
+				for(;;)
+				{
+					if( !cache.cache.full() )
+					{
+						cache.cache.emplace( std::move( value ) );
+						return true;
+					}
+
+					const bool wait = depos.with( [&]( Depo & depo, std::unique_lock<std::mutex> & lock )
+					{
+						const bool result = depo.ready.full() || depo.spare.empty();
+						if( result )
+						{
+							depo.wait( ticket );
+						}
+						else
+						{
+							depo.ready.emplace( std::move( cache.cache ) );
+							cache.cache = depo.spare.pop();
+							if( depo.sleeping )
+							{
+								lock.unlock();
+								depo.condition.notify_one();
+							}
+						}
+						return result;
+					});
+
+					if( wait )
+					{
+						if( deadline == Clock::time_point::min() )
+						{
+							const auto now = Clock::now();
+							const auto computed = now + timeout;
+							deadline = computed > now ? computed : Clock::time_point::max();
+						}
+
+						if( ticket.wait( lock, deadline )  )
+						{
+							ticket.reset();
+						}
+						else
+						{
+							depos.with( [&]( Depo & depo )
+							{
+								depo.unwait( ticket );
+							});
+							return false;
+						}
+					}
+
+				}
+			});
+		}
+
 		/// Insert a value into the queue.
 		///
 		/// @param value R-reference to value to insert.
@@ -55,47 +121,11 @@ namespace dynalog { namespace async {
 		///
 		bool insert( T && value, const typename Clock::duration & timeout = Clock::duration::zero() )
 		{
-			struct Request
-			{
-				T value;
-				LatencyQueue & queue;
-				const typename Clock::duration & timeout;
-
-				/// Place the value in the ingress cache if there's space before the timeout elapses.
-				///
-				bool operator() ( IngressNode & ingress, std::unique_lock<std::mutex> & lock )
-				{
-					// Forward-allocate a constant deadline so we don't retry forever.
-					//
-					typename Clock::time_point deadline = Clock::time_point::min();
-					for(;;)
-					{
-						const auto result = ingress.cache.size() < ingress.cache.capacity() || queue.receivers.with( ingress );
-						if( result )
-						{
-							ingress.cache.emplace_back( std::move( value ) );
-						}
-						else if( timeout != Clock::duration::zero() )
-						{
-							// Create deadline if not set(defer potential syscall)
-							//
-							if( deadline == Clock::time_point::min() )
-							{
-								const auto now = Clock::now();
-								const auto computed = now + timeout;
-								deadline = computed > now ? computed : Clock::time_point::max();
-							}
-							if( ingress.condition.wait_until( lock, deadline ) == std::cv_status::no_timeout )
-							{
-								continue;
-							}
-						}
-						return result;
-					}
-				}
-			};
-			return ingresses.with( Request{ std::move( value ), *this, timeout } );
+			return insert( threadindex(), std::forward<T>( value ), timeout );
 		}
+
+		size_t slots( void ) const { return depos.size() * readersPerDepo; }
+		size_t size( void ) const { return caches.size(); }
 
 		/// Remove elements until predicate indicates stop.
 		///
@@ -109,300 +139,220 @@ namespace dynalog { namespace async {
 		template < typename Pred, typename Func >
 		bool remove( size_t index, Pred && pred, Func && func )
 		{
-			return receivers.with( index / heads, [&]( ReceiveNode & receive, std::unique_lock<std::mutex> & lock )
+			if( index > slots() ) { return false; }
+
+			const size_t idex = index % depos.size();
+			const size_t head = index / depos.size();
+
+			return depos.with( idex, [&]( Depo & depo, std::unique_lock<std::mutex> & lock )
 			{
-				return receive.remove( index % heads, pred, func, *this, lock );
-			});
-		}
-
-		/// Create a latency queue as specified.
-		///
-		/// For now, approximate two caches per ingress, divided equally among receivers.
-		///
-		/// @param latency Maximum latency between queue synchronizations.
-		/// @param capacity Maximum number of events to cache before synchronization.
-		/// @param receivers Number of receiver slots to create.
-		///
-		LatencyQueue( const typename Clock::duration & latency, size_t capacity, size_t receivers, size_t heads )
-		: ingresses( std::make_tuple( capacity ) )
-		, receivers( receivers, std::make_tuple( heads, capacity, (1+ingresses.size()) / receivers, Clock::now() + latency ) )
-		, latency( latency )
-		, heads( heads )
-		{}
-
-		/// Number of receiver slots--each slot SHOULD be worked.
-		///
-		size_t const slots() const { return receivers.size() * heads; }
-
-	protected:
-		/// Cache for inserted items. Items sit here until the cache
-		/// fills or is drained by a receiver.
-		///
-		struct IngressNode
-		{
-			std::condition_variable condition;
-			std::vector<T> cache;
-
-			/// Try to push contents to a receiver, notifying them on success.
-			///
-			bool operator() ( ReceiveNode & receive )
-			{
-				const auto result = receive( *this );
-				if( result )
-				{
-					receive.condition.notify_one();
-				}
-				return result;
-			}
-
-			/// Initialize with the specified capacity.
-			///
-			IngressNode( size_t capacity )
-			{
-				cache.reserve( capacity );
-			}
-		};
-
-		struct ReadHead 
-		{
-			bool occupied;				///< Indicate if node is in use.
-			std::vector< std::vector<T> > drain;	///< Caches in the process of draining.
-
-			// Iterators for resuming draining
-			//
-			typename std::vector< std::vector<T> >::iterator cache;
-			typename std::vector<T>::iterator item;
-
-			ReadHead( size_t caches )
-			: occupied( false )
-			{
-				drain.reserve( caches );
-				cache = drain.end();
-			}
-
-			// Resume draining elements. Returns last value indicated by predicate.
-			//
-			template < typename Pred, typename Func >
-			bool resume( Pred && pred, Func && func, std::unique_lock<std::mutex> & lock )
-			{
-				bool finished = pred();
-
-				// If elements are left to drain, resume draining until empty or pred().
-				//
-				if( drain.size() )
-				{
-					lock.unlock();
-					for(;;)
-					{
-						for( ;item != cache->end() && !finished; ++item )
-						{
-							func( std::move( *item ) );
-							finished = pred();
-						}
-						
-						if( !finished && ++cache != drain.end() )
-						{
-							item = cache->begin();
-						}
-						else
-						{
-							break;
-						}
-					}
-					lock.lock();
-				}
-
-				return finished;
-			}
-
-			// Prepare to receive the indicated caches
-			//
-			void load( std::vector< std::vector<T> > & ready )
-			{
-				std::swap( ready, drain );
-				cache = drain.begin();
-				if( cache != drain.end() )
-				{
-					item = cache->begin();
-				}
-			}
-
-			// Move empty cahces back for reuse.
-			//
-			void unload( std::vector< std::vector<T> > & empty )
-			{
-				
-				for( auto && cache : drain )
-				{
-					cache.clear();
-					empty.emplace_back( std::move( cache ) );
-				}
-				drain.clear();
-			}
-		};
-
-		/// Wait for, receive, and deque items. Ingress nodes offload
-		/// non-empty caches into 'ready' and get empty caches from 
-		/// 'empty'. 'drain', 'cache', and 'item' hold the partial
-		/// progress of removing items from the queue. The receiver
-		/// resumes partial progress(if any) and returns empty caches
-		/// to 'empty'. Then, if no caches are immediately in 'ready',
-		/// the receiver waits for the next deadline(or wakeup). If
-		/// the receiver waits until deadline, it sweeps it's subset
-		/// of the ingress caches into 'ready'. In all three cases(
-		/// ready non-empty, wait interrupted, or sweep), the receiver
-		/// prepares to drain 'ready' caches, and loops to the top.
-		///
-		/// At the top, and between every item in drain, the predicate
-		/// is checked for exit.
-		///
-		struct ReceiveNode
-		{
-			/// Initialize with specified number of caches each of
-			/// the specified capacity.
-			///
-			ReceiveNode( size_t heads, size_t capacity, size_t caches, const typename Clock::time_point & next )
-			: deadline( next )
-			{
-				ready.reserve( caches );
-				empty.reserve( caches );
-				readers.reserve( heads );
-				waiting.reserve( caches );
-
-				for( size_t index = 0; index < caches; ++index )
-				{
-					std::vector<T> cache;
-					cache.reserve( capacity );
-					empty.emplace_back( std::move( cache ) );
-				}
-				for( size_t index = 0; index < heads; ++index )
-				{
-					readers.emplace_back( caches );
-				}
-			}
-
-			std::condition_variable condition;
-			std::vector< std::vector<T> > ready;	///< Caches ready to be drained
-			std::vector< std::vector<T> > empty;	///< Empty caches
-
-			std::vector< IngressNode * > waiting;	///< Condition nodes waiting for empty caches.
-			std::vector< ReadHead > readers;
-
-			typename Clock::time_point deadline;	///< Next time to drain
-
-			template < typename Pred, typename Func >
-			bool remove( const size_t head, Pred && pred, Func && func, LatencyQueue & queue, std::unique_lock<std::mutex> & lock )
-			{
-				ReadHead & reader = readers[ head ];
-				if( reader.occupied ){ return false; }
+				auto & reader = depo.readers[ head ];
+				if( reader.occupied ) { return false; }
 				reader.occupied = true;
-
 				for(;;)
 				{
-					// exit if predicate indicated.
-					//
-					if( reader.resume( pred, func, lock ) )
+					bool finished;
+
+					if( !(finished = pred()) && !reader.drain.empty() )
 					{
-						break;
-					}
-
-					// Return drained caches to the empty cache.
-					//
-					reader.unload( empty );
-
-					// wake all waiting ingress since we have no idea about wait timeout...
-					//
-					for( auto && ingress : waiting )
-					{
-						ingress->condition.notify_all();
-					}
-					waiting.clear();
-
-					// Wait & sweep ingress for non-empty caches if none are ready.
-					//
-					if( ready.size() == 0 )
-					{
-						const std::cv_status result = condition.wait_until( lock, deadline );
-
-						// Skip sweep if sleep was interrupted.
-						//
-						if( result == std::cv_status::timeout )
+						lock.unlock();
+						while( !(finished = pred()) && !reader.drain.empty()  )
 						{
-							deadline = Clock::now() + queue.latency;
+							func( reader.drain.pop() );
+						}
+						lock.lock();
+					}
 
-							// Scan only every nth ingress to divide ingresses among receivers.
-							//
-							const auto increment = queue.receivers.size();
+					if( finished ) { break; }
+
+					if( depo.ready.empty() )
+					{
+						depo.sleeping += 1;
+						const auto status = depo.condition.wait_until( lock, reader.deadline );
+						depo.sleeping -= 1;
+
+						if( status == std::cv_status::timeout && depo.ready.empty() )
+						{
+							reader.deadline += latency;
 							lock.unlock();
-							for( size_t index = threadindex( increment ); index < queue.ingresses.size(); index += increment )
-							{
-								queue.ingresses.with( index, [index,&queue]( IngressNode & ingress )
-								{
-									if( ingress.cache.size() )
-									{
-										queue.receivers.with( index, ingress );
-									}
-								});
-							}
+							collect( idex );
 							lock.lock();
 						}
 					}
 
-					// Prepare to drain ready caches.
-					//
-					reader.load( ready );
+					if( !depo.ready.empty() )
+					{
+						depo.spare.emplace( std::move( reader.drain ) );
+						reader.drain = depo.ready.pop();
+						depo.wake_waiting();
+					}
 				}
 				reader.occupied = false;
 				return true;
-			}
-			
-			/// Offload ingress cache contents, or register for wakeup.
-			///
-			/// @return True if cache was non-empty, offloaded, and replaced with an empty cache.
-			///
-			bool operator() ( IngressNode & ingress )
+			});
+		}
+
+		LatencyQueue( const typename Clock::duration & abs_latency,
+			size_t capacity,
+			size_t scale = 1,
+			size_t readersPerDepo = 1,
+			size_t nDepos = 1 )
+		: latency( abs_latency * readersPerDepo )
+		, caches( std::make_tuple( capacity ) )
+		, depos( nDepos, std::make_tuple( abs_latency,
+			capacity, 
+			readersPerDepo, 
+			(caches.size() + 1) / nDepos - 1,
+			scale ) )
+		, readersPerDepo( readersPerDepo )
+		{}
+
+	protected:
+		struct Cache
+		{
+			Cache( size_t capacity )
+			: cache( capacity )
+			{}
+
+			RingBuffer<T> cache;
+			std::condition_variable condition;
+		};
+
+		struct Ticket {
+			std::atomic<bool> ready;
+			std::condition_variable & condition;
+			std::mutex & mutex;
+
+			Ticket( std::condition_variable & cond, std::unique_lock<std::mutex> & lock )
+			: ready( false )
+			, condition( cond )
+			, mutex( *lock.mutex() )
+			{}
+
+			bool wait( std::unique_lock<std::mutex> & lock, const typename Clock::time_point & deadline )
 			{
-				const auto result = ready.size() < ready.capacity() && empty.size();
+				return condition.wait_until( lock, deadline, [this] { return ready.load( std::memory_order_relaxed ); } );
+			}
+
+			bool wake()
+			{
+				std::unique_lock<std::mutex> lock( mutex, std::try_to_lock_t{} );
+				const bool result = lock.owns_lock();
 				if( result )
 				{
-					ready.emplace_back( std::move( ingress.cache ) );
-					ingress.cache = std::move( empty.back() );
-					empty.pop_back();
-				}
-				else
-				{
-					waiting.emplace_back( &ingress );
+					ready.store( true, std::memory_order_relaxed );
+					condition.notify_one();
 				}
 				return result;
 			}
+
+			void reset()
+			{
+				ready.store( false, std::memory_order_relaxed );
+			}
 		};
 
-		/// Proxy object to bring predicate and function into receiver scope.
-		///
-		/*template < typename Pred, typename Func >
-		struct Receiver
+		struct Reader
 		{
-			Pred pred;
-			Func func;
-			LatencyQueue & queue;
-
-			Receiver( Pred && pred, Func && func, LatencyQueue & queue )
-			: pred( std::forward<Pred>( pred ) )
-			, func( std::forward<Func>( func ) )
-			, queue( queue )
+			Reader( const typename Clock::time_point & time, size_t capacity )
+			: drain( capacity )
+			, deadline( time )
 			{}
+			bool occupied = false;
+			RingBuffer<T> drain;
+			typename Clock::time_point deadline;
+		};
 
-			bool operator() ( ReceiveNode & receive, std::unique_lock<std::mutex> & lock )
+		struct Depo
+		{
+			Depo( const typename Clock::duration & latency, size_t capacity, size_t n_readers, size_t n_waiters, size_t scale = 1 )
+			: ready( n_waiters * scale )
+			, spare( n_waiters * scale )
 			{
-				return receive.remove( pred, func, queue, lock );
+				auto count = n_waiters * scale;
+				for( size_t index = 0; index < count; ++ index )
+				{
+					spare.emplace( capacity );
+				}
+
+				const auto now = Clock::now();
+				readers.reserve( n_readers );
+				waiting.reserve( n_waiters );
+				for( size_t index = 0; index < n_readers; ++index )
+				{
+					readers.emplace_back( now + latency * index, capacity );
+				}
 			}
-		};*/
 
-		Replicated< IngressNode > ingresses;
-		Replicated< ReceiveNode > receivers;
+			void wait( Ticket & ticket )
+			{
+				for( auto && waiter : waiting )
+				{
+					if( waiter == nullptr )
+					{
+						waiter = &ticket;
+						return;
+					}
+				}
+				waiting.emplace_back( &ticket );
+			}
+
+			void unwait( Ticket & ticket )
+			{
+				for( auto && waiter : waiting )
+				{
+					if( waiter == &ticket )
+					{
+						waiter = nullptr;
+						return;
+					}
+				}
+			}
+
+			void wake_waiting( void )
+			{
+				for( auto && waiter : waiting )
+				{
+					if( waiter != nullptr && waiter->wake() )
+					{
+						waiter = nullptr;
+					}
+				}
+			}
+
+			RingBuffer<RingBuffer<T>> ready;
+			RingBuffer<RingBuffer<T>> spare;
+			std::vector<Reader> readers;
+			std::vector<Ticket*> waiting;
+			std::condition_variable condition;
+			size_t sleeping = 0;
+		};
+
 		const typename Clock::duration latency;
-		const size_t heads;
-	};
+		Replicated< Cache > caches;
+		Replicated< Depo > depos;
+		const size_t readersPerDepo;
 
+		void collect( size_t slot )
+		{
+			for( size_t index = slot; index < caches.size(); index += depos.size() )
+			{
+				caches.with( index, [&]( Cache & cache )
+				{
+					if( !cache.cache.empty() )
+					{
+						depos.with( slot, [&cache]( Depo & depo )
+						{
+							if( !depo.ready.full() && !depo.spare.empty() )
+							{
+								depo.ready.emplace( std::move( cache.cache ) );
+								cache.cache = depo.spare.pop();
+							} 
+						});
+					}
+				});
+			}
+		}
+	};
 
 } }
