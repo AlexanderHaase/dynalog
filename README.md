@@ -22,7 +22,7 @@ Performance comparison of formatting output(relative to slowest):
 0.23405 usec/call (3.72 x)	DynaLog('/dev/null')
 0.03550 usec/call (24.52 x)	DynaLog(<NoOp>)
 0.00086 usec/call (1016.83 x)	DynaLog(<disabled>)
-0.20122 usec/call (4.33 x)	DynaLog(<async>'/dev/null')
+0.17073 usec/call (5.09 x)	DynaLog(<async>'/dev/null')
 ```
 
 ---

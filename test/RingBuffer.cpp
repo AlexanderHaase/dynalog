@@ -70,6 +70,76 @@ SCENARIO( "ring buffers should operate as fixed-capacity fifos" )
 			REQUIRE( buffer.capacity() == capacity );
 			REQUIRE( other.capacity() == 0 );
 		}
+
+		THEN( "removing the first element shouldn't be an issue" )
+		{
+			for( size_t index = 0; index < capacity; ++index )
+			{
+				buffer.emplace( index );
+			}
+			REQUIRE( buffer.erase( []( size_t elem ) { return elem == 0; } ) );
+			REQUIRE( buffer.size() == capacity - 1 );
+			for( size_t index = 1; index < capacity; ++index )
+			{
+				REQUIRE( buffer.pop() == index );
+			}
+			REQUIRE( buffer.empty() );
+		}
+
+		THEN( "removing the last element shouldn't be an issue" )
+		{
+			for( size_t index = 0; index < capacity; ++index )
+			{
+				buffer.emplace( index );
+			}
+			REQUIRE( buffer.erase( []( size_t elem ) { return elem == 3; } ) );
+			REQUIRE( buffer.size() == capacity - 1 );
+			for( size_t index = 0; index < capacity - 1; ++index )
+			{
+				REQUIRE( buffer.pop() == index );
+			}
+			REQUIRE( buffer.empty() );
+		}
+
+		THEN( "wrap-around removing the first element shouldn't be an issue" )
+		{
+			for( size_t index = 0; index < capacity/2; ++index )
+			{
+				buffer.emplace( index );
+				buffer.pop();
+			}
+			for( size_t index = 0; index < capacity; ++index )
+			{
+				buffer.emplace( index );
+			}
+			REQUIRE( buffer.erase( []( size_t elem ) { return elem == 0; } ) );
+			REQUIRE( buffer.size() == capacity - 1 );
+			for( size_t index = 1; index < capacity; ++index )
+			{
+				REQUIRE( buffer.pop() == index );
+			}
+			REQUIRE( buffer.empty() );
+		}
+
+		THEN( "wrap-around removing the last element shouldn't be an issue" )
+		{
+			for( size_t index = 0; index < capacity/2; ++index )
+			{
+				buffer.emplace( index );
+				buffer.pop();
+			}
+			for( size_t index = 0; index < capacity; ++index )
+			{
+				buffer.emplace( index );
+			}
+			REQUIRE( buffer.erase( []( size_t elem ) { return elem == 3; } ) );
+			REQUIRE( buffer.size() == capacity - 1 );
+			for( size_t index = 0; index < capacity - 1; ++index )
+			{
+				REQUIRE( buffer.pop() == index );
+			}
+			REQUIRE( buffer.empty() );
+		}
 	}
 
 	GIVEN( "a ring buffer for a move-only type" )

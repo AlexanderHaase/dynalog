@@ -48,6 +48,31 @@ namespace dynalog { namespace async {
 		///
 		size_t capacity( void ) const { return slots.capacity; }
 
+		template< typename Predicate >
+		size_t erase( Predicate && predicate )
+		{
+			const auto limit = size();
+			for( size_t index = 0; index < limit; ++index )
+			{
+				auto value = pop();
+				if( !predicate( value ) )
+				{
+					emplace( std::move( value ) );
+				}
+			}
+			return limit - size();
+			/*auto ptr = slots.begin;
+			for( size_t index = 0; index++ < size(); slots.advance( ptr ) )
+			{
+				if( predicate( *ptr ) )
+				{
+					slots.remove( ptr );
+					return true;
+				}
+			}
+			return false;*/
+		}
+
 		/// Change the capacity of the backing buffer.
 		///
 		/// Drops newer elements to fit.
@@ -126,6 +151,39 @@ namespace dynalog { namespace async {
 				}
 			}
 
+			void rewind( T*& ptr, const size_t count = 1 ) const
+			{
+				if( (ptr -= count) < storage )
+				{
+					ptr += capacity;
+				}
+			}
+
+			void remove( T * ptr )
+			{
+				auto src = ptr;
+				if( ptr - begin > end - ptr )
+				{
+					for( advance( src ); src != end; advance( src ) )
+					{
+						*ptr = std::move( *src );
+						ptr = src;
+					}
+					end = ptr;
+				}
+				else
+				{
+					for( rewind( src ); ptr != begin; rewind( src ) )
+					{
+						*ptr = std::move( *src );
+						ptr = src;
+					}
+					advance( begin );
+				}
+				src->~T();
+				size -= 1;
+			}
+					
 			void init( T * ptr, size_t count )
 			{
 				storage = ptr;

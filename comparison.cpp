@@ -147,7 +147,7 @@ int main( int argc, const char ** argv )
 	benchmark.measure( "DynaLog(<disabled>)", callable );
 	
 	auto dispatcher = std::make_shared<dynalog::async::Dispatcher>( std::chrono::milliseconds( 1 ), 
-		std::chrono::seconds(10), 128, 4 );
+		std::chrono::seconds(10), 512, 4 );
 	dispatcher->run();
 	auto deferredEmitter = std::make_shared<dynalog::async::DeferredEmitter>( dispatcher, emitter.get() );
 

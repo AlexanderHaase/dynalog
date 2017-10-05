@@ -74,7 +74,7 @@ namespace dynalog { namespace async {
 			size_t capacity,
 			size_t heads,
 			size_t partitions )
-	: queue( latency, capacity, 1, heads, partitions )
+	: queue( latency, capacity, 4, heads, partitions )
 	, timeout( timeout )
 	{}
 

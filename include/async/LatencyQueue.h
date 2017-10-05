@@ -57,21 +57,25 @@ namespace dynalog { namespace async {
 			return caches.with( index, [&]( Cache & cache, std::unique_lock<std::mutex> & lock )
 			{
 				auto deadline = Clock::time_point::min();
-				Ticket ticket{ cache.condition, lock };
+				auto ticket = cache.tickets.empty() ? std::unique_ptr<Ticket>{ new Ticket{ lock } }
+					: cache.tickets.pop();
+				
+				bool result;
 				for(;;)
 				{
 					if( !cache.cache.full() )
 					{
 						cache.cache.emplace( std::move( value ) );
-						return true;
+						result = true;
+						break;
 					}
 
 					const bool wait = depos.with( [&]( Depo & depo, std::unique_lock<std::mutex> & lock )
 					{
-						const bool result = depo.ready.full() || depo.spare.empty();
-						if( result )
+						const bool full = depo.ready.full() || depo.spare.empty();
+						if( full )
 						{
-							depo.wait( ticket );
+							depo.wait( *ticket );
 						}
 						else
 						{
@@ -83,7 +87,7 @@ namespace dynalog { namespace async {
 								depo.condition.notify_one();
 							}
 						}
-						return result;
+						return full;
 					});
 
 					if( wait )
@@ -95,21 +99,28 @@ namespace dynalog { namespace async {
 							deadline = computed > now ? computed : Clock::time_point::max();
 						}
 
-						if( ticket.wait( lock, deadline )  )
+						if( ticket->wait( lock, deadline )  )
 						{
-							ticket.reset();
+							ticket->reset();
 						}
 						else
 						{
 							depos.with( [&]( Depo & depo )
 							{
-								depo.unwait( ticket );
+								depo.unwait( *ticket );
 							});
-							return false;
+							result = false;
+							break;
 						}
 					}
 
 				}
+				if( !cache.tickets.full() )
+				{
+					ticket->reset();
+					cache.tickets.emplace( std::move( ticket ) );
+				}
+				return result;
 			});
 		}
 
@@ -149,19 +160,16 @@ namespace dynalog { namespace async {
 				auto & reader = depo.readers[ head ];
 				if( reader.occupied ) { return false; }
 				reader.occupied = true;
+				lock.unlock();
 				for(;;)
 				{
 					bool finished;
 
-					if( !(finished = pred()) && !reader.drain.empty() )
+					while( !(finished = pred()) && !reader.drain.empty()  )
 					{
-						lock.unlock();
-						while( !(finished = pred()) && !reader.drain.empty()  )
-						{
-							func( reader.drain.pop() );
-						}
-						lock.lock();
+						func( reader.drain.pop() );
 					}
+					lock.lock();
 
 					if( finished ) { break; }
 
@@ -180,12 +188,19 @@ namespace dynalog { namespace async {
 						}
 					}
 
+					Ticket * ticket = nullptr;
+
 					if( !depo.ready.empty() )
 					{
 						depo.spare.emplace( std::move( reader.drain ) );
 						reader.drain = depo.ready.pop();
-						depo.wake_waiting();
+						if( depo.waiting.size() )
+						{
+							ticket = depo.waiting.pop();
+						}
 					}
+					lock.unlock();
+					if( ticket ) { ticket->wake(); }
 				}
 				reader.occupied = false;
 				return true;
@@ -208,24 +223,16 @@ namespace dynalog { namespace async {
 		{}
 
 	protected:
-		struct Cache
-		{
-			Cache( size_t capacity )
-			: cache( capacity )
-			{}
 
-			RingBuffer<T> cache;
-			std::condition_variable condition;
-		};
-
+		// TODO: Compare caching tickets with exclusive conditions to shared conditions.
+		//
 		struct Ticket {
 			std::atomic<bool> ready;
-			std::condition_variable & condition;
+			std::condition_variable condition;
 			std::mutex & mutex;
 
-			Ticket( std::condition_variable & cond, std::unique_lock<std::mutex> & lock )
+			Ticket( std::unique_lock<std::mutex> & lock )
 			: ready( false )
-			, condition( cond )
 			, mutex( *lock.mutex() )
 			{}
 
@@ -234,22 +241,29 @@ namespace dynalog { namespace async {
 				return condition.wait_until( lock, deadline, [this] { return ready.load( std::memory_order_relaxed ); } );
 			}
 
-			bool wake()
+			void wake()
 			{
-				std::unique_lock<std::mutex> lock( mutex, std::try_to_lock_t{} );
-				const bool result = lock.owns_lock();
-				if( result )
-				{
-					ready.store( true, std::memory_order_relaxed );
-					condition.notify_one();
-				}
-				return result;
+				std::unique_lock<std::mutex> lock( mutex );
+				ready.store( true, std::memory_order_relaxed );
+				lock.unlock();
+				condition.notify_one();
 			}
 
 			void reset()
 			{
 				ready.store( false, std::memory_order_relaxed );
 			}
+		};
+
+		struct Cache
+		{
+			Cache( size_t capacity )
+			: cache( capacity )
+			, tickets( 8 )
+			{}
+
+			RingBuffer<T> cache;
+			RingBuffer<std::unique_ptr<Ticket>> tickets;
 		};
 
 		struct Reader
@@ -268,6 +282,7 @@ namespace dynalog { namespace async {
 			Depo( const typename Clock::duration & latency, size_t capacity, size_t n_readers, size_t n_waiters, size_t scale = 1 )
 			: ready( n_waiters * scale )
 			, spare( n_waiters * scale )
+			, waiting( n_waiters * scale )
 			{
 				auto count = n_waiters * scale;
 				for( size_t index = 0; index < count; ++ index )
@@ -277,7 +292,6 @@ namespace dynalog { namespace async {
 
 				const auto now = Clock::now();
 				readers.reserve( n_readers );
-				waiting.reserve( n_waiters );
 				for( size_t index = 0; index < n_readers; ++index )
 				{
 					readers.emplace_back( now + latency * index, capacity );
@@ -286,44 +300,23 @@ namespace dynalog { namespace async {
 
 			void wait( Ticket & ticket )
 			{
-				for( auto && waiter : waiting )
+				if( waiting.full() )
 				{
-					if( waiter == nullptr )
-					{
-						waiter = &ticket;
-						return;
-					}
+					waiting.reshape( waiting.capacity() * 2 );
 				}
-				waiting.emplace_back( &ticket );
+				waiting.emplace( &ticket );
 			}
 
 			void unwait( Ticket & ticket )
 			{
-				for( auto && waiter : waiting )
-				{
-					if( waiter == &ticket )
-					{
-						waiter = nullptr;
-						return;
-					}
-				}
+				waiting.erase( [&ticket]( Ticket * other ) { return &ticket == other; } );
 			}
 
-			void wake_waiting( void )
-			{
-				for( auto && waiter : waiting )
-				{
-					if( waiter != nullptr && waiter->wake() )
-					{
-						waiter = nullptr;
-					}
-				}
-			}
 
 			RingBuffer<RingBuffer<T>> ready;
 			RingBuffer<RingBuffer<T>> spare;
 			std::vector<Reader> readers;
-			std::vector<Ticket*> waiting;
+			RingBuffer<Ticket*> waiting;
 			std::condition_variable condition;
 			size_t sleeping = 0;
 		};
