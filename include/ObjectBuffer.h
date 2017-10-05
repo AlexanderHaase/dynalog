@@ -134,6 +134,30 @@ namespace dynalog {
 			buffer = std::move( buffer );
 		}
 
+		/// Move-construct from another buffer
+		///
+		inline ObjectBuffer( ObjectBuffer && other )
+		: info( other.info )
+		, destructor( other.destructor )
+		, buffer( std::move( other.buffer ) )
+		{
+			other.info = nullptr;
+			other.destructor = nullptr;
+		}
+
+		/// Move-assign
+		///
+		inline ObjectBuffer & operator = ( ObjectBuffer && other )
+		{
+			clear();
+			info = other.info;
+			destructor = other.destructor;
+			buffer = std::move( other.buffer );
+			other.info = nullptr;
+			other.destructor = nullptr;
+			return *this;
+		}
+
 	protected:
 		const std::type_info * info = nullptr;
 		void (* destructor)(void *) = nullptr;

@@ -1,17 +1,19 @@
 #include <dynalog/include/Log.h>
 #include <dynalog/include/HandleEmitter.h>
+#include <dynalog/include/async/Flush.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <cstring>
 #include <iomanip>
 #include <unistd.h>
 
-template < size_t Iterations = 1000000, typename Callable >
-double usecPerCall( Callable && callable )
+template < size_t Iterations = 1000000, typename Callable, typename PostCondition >
+double usecPerCall( Callable && callable, PostCondition && condition )
 {
 	struct timeval begin, end;
 	gettimeofday( &begin, nullptr );
@@ -20,6 +22,8 @@ double usecPerCall( Callable && callable )
 	{
 		callable();
 	}
+
+	condition();
 
 	gettimeofday( &end, nullptr );
 
@@ -33,10 +37,17 @@ struct Benchmark
 {
 	std::vector<std::tuple<std::string, double> > results;
 
+
+	template< typename Callable, typename PostCondition >
+	void measure( const std::string & tag, Callable && callable, PostCondition && condition )
+	{
+		results.emplace_back( tag, usecPerCall( std::forward<Callable>( callable ), std::forward<PostCondition>( condition ) ) );
+	}
+
 	template< typename Callable >
 	void measure( const std::string & tag, Callable && callable )
 	{
-		results.emplace_back( tag, usecPerCall( std::forward<Callable>( callable ) ) );
+		measure( tag, std::forward<Callable>( callable ), []{} );
 	}
 
 	double worst( void )
@@ -105,10 +116,23 @@ int main( int argc, const char ** argv )
 	});
 
 	std::fstream stream( "/dev/null", std::ios_base::out );
-	benchmark.measure( "fstream('/dev/null')", [&stream]() { stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl; } );
+	benchmark.measure( "fstream('/dev/null')", [&stream]() { stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl << std::flush; } );
 
+	benchmark.measure( "stringstream(<internal buffer>)", []()
+	{
+		std::stringstream stream;
+		stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl;
+	});
+	benchmark.measure( "stringstream(<internal buffer>) => write('/dev/null')", [devnull]()
+	{
+		std::stringstream stream;
+		stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl;
+		return write( devnull, stream.str().c_str(), stream.str().size() );
+	});
+	
 	std::shared_ptr<dynalog::HandleEmitter> emitter;
 	emitter = std::make_shared<dynalog::HandleEmitter>( devnull );
+	
 	dynalog::global::policy.configure( emitter.get() );
 	dynalog::global::configuration.update( dynalog::global::priority );
 	benchmark.measure( "DynaLog('/dev/null')", callable );
@@ -121,6 +145,20 @@ int main( int argc, const char ** argv )
 	dynalog::global::policy.configure( nullptr );
 	dynalog::global::configuration.update( dynalog::global::priority );
 	benchmark.measure( "DynaLog(<disabled>)", callable );
+	
+	auto dispatcher = std::make_shared<dynalog::async::Dispatcher>( std::chrono::milliseconds( 1 ), 
+		std::chrono::seconds(10), 512, 4 );
+	dispatcher->run();
+	auto deferredEmitter = std::make_shared<dynalog::async::DeferredEmitter>( dispatcher, emitter.get() );
+
+	dynalog::global::policy.configure( deferredEmitter.get() );
+	dynalog::global::configuration.update( dynalog::global::priority );
+	benchmark.measure( "DynaLog(<async>'/dev/null')", callable, [&dispatcher]
+	{
+		dynalog::async::Flush flush;
+		dispatcher->flush( flush );
+		flush.wait();
+	});
 
 	benchmark.log(std::cout);
 	return 0;

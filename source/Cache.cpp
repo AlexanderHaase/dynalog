@@ -2,6 +2,21 @@
 
 namespace dynalog {
 
+	/// Create a new cache
+	///
+	/// @param size Capacity of buffers to create.
+	/// @param qty Number of buffers to cache.
+	///
+	Cache::Cache( size_t size, size_t qty )
+	: capacity( size )
+	, index( 0 )
+	{ slots.resize( qty ); }
+
+	Cache::~Cache()
+	{
+		while( index ) { delete slots[ --index ]; }
+	}
+
 	/// Get-or-create a buffer with the appropriate size.
 	///
 	/// Creates a buffer if the size is too large or cache is empty.

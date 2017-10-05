@@ -23,8 +23,7 @@ namespace dynalog {
 		template < typename Deleter >
 		static Pointer create( size_t size, Deleter && del ) 
 		{
-			uint8_t * data = new uint8_t[ size + sizeof(Buffer) ];
-			return Pointer{ new (data) Buffer{ size, std::forward<Deleter>( del ) } };
+			return Pointer{ new (::operator new( size + sizeof(Buffer) ) ) Buffer{ size, std::forward<Deleter>( del ) } };
 		}
 
 		static inline Pointer create( size_t size ) { return create( size, []( Buffer * buffer ){ delete buffer; }); }

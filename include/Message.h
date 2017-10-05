@@ -1,20 +1,10 @@
 #pragma once
 #include <dynalog/include/ObjectBuffer.h>
+#include <dynalog/include/util.h>
 #include <typeindex>
 #include <ostream>
 
 namespace dynalog {
-
-	/// C++14 adds std::make_index_sequence< N >
-	///
-	template < size_t Current, size_t ... Remainder >
-	struct IndexSequence {};
-
-	template < size_t N, size_t ...Seq>
-	struct GenerateIndexSequence : GenerateIndexSequence< N-1, N-1, Seq... >{};
-
-	template < size_t ...Seq >
-	struct GenerateIndexSequence<0, Seq...> { using type = IndexSequence<Seq...>; };
 
 	/// Messages encapsulate data in a portable closure.
 	///
@@ -164,15 +154,25 @@ namespace dynalog {
 
 		/// Create a closure for the specified types
 		///
-		template < typename ... Args >
+		template < typename ... Args, typename Class = Body<Args...> >
 		void format( Args && ... args )
 		{
-			const size_t required = sizeof( Body<Args...> );
+			const size_t required = sizeof( Class );
 			if( buffer.size() < required )
 			{
-				buffer.resize( cached( required ) );
+				buffer.resize( required );
+				//buffer.resize( cached( required ) );
 			}
 			buffer.emplace< Body<Args...> >( std::forward<Args>( args )... );
+		}
+
+		/// Helper to allow injecting of aribtrary class as the first 
+		/// template argument.
+		///
+		template < typename Class, typename ... Args >
+		void format( Args && ... args )
+		{
+			format<Args...,Class>( std::forward<Args>( args )... );
 		}
 
 		/// Accessor for content.
