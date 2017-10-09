@@ -52,6 +52,7 @@ namespace dynalog {
 		LevelSet levels;	///< Mask of enabled levels.
 		Location location;	///< Unique indentifier for logger.
 		Context context;	///< Group for logger.
+		Tag tag;		///< Tag for logger.
 
 		/// Fast conditional logging method.
 		///

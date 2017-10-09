@@ -28,14 +28,18 @@ namespace dynalog {
 //
 #define DYNALOG_LOCATION __FILE__ ":" STR( __LINE__ )
 
+// Generate a context value for generated loggers.
+//
+#define DYNALOG_CONTEXT __PRETTY_FUNCTION__
+
 // Define a default level mask for generated loggers.
 //
 #define DYNALOG_DEFAULT_LEVELS (~0u)
 
 // Instantiate an embedded logger with the given name
 //
-#define DYNALOG_EMBEDDED_LOGGER(name, CONTEXT) \
-	::dynalog::Logger name = { { ::dynalog::EmbeddedLoggerInit }, DYNALOG_DEFAULT_LEVELS, ::dynalog::Location{ DYNALOG_LOCATION }, ::dynalog::Context{ CONTEXT } }
+#define DYNALOG_EMBEDDED_LOGGER(name, TAG) \
+	::dynalog::Logger name = { { ::dynalog::EmbeddedLoggerInit }, DYNALOG_DEFAULT_LEVELS, ::dynalog::Location{ DYNALOG_LOCATION }, ::dynalog::Context{ DYNALOG_CONTEXT }, ::dynalog::Tag{ TAG } }
 
 
 // Logging macro-- comma-separated objects are concatinated with ostream <<.
@@ -48,4 +52,4 @@ namespace dynalog {
 		});	\
 	} while( false )
 
-#define DYNALOG( LEVEL, ... )	DYNALOG_TAG( __PRETTY_FUNCTION__, LEVEL, __VA_ARGS__ )
+#define DYNALOG( LEVEL, ... )	DYNALOG_TAG( "<untagged>", LEVEL, __VA_ARGS__ )

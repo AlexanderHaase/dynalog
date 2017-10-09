@@ -142,7 +142,11 @@ namespace dynalog {
 		/// @param policy Policy instance to insert.
 		/// @return false on conflict, true otherwise.
 		///
-		bool insert( int priority, const std::shared_ptr<Policy> & policy );
+		template< typename PolicyType>
+		bool insert( int priority, const std::shared_ptr<PolicyType> & policy )
+		{
+			return insert( priority, std::dynamic_pointer_cast<Policy>( policy ) );
+		}
 
 		/// Remove a policy, re-evaluating orphaned loggers.
 		///
@@ -150,7 +154,11 @@ namespace dynalog {
 		/// @param policy Instance to remove.
 		/// @return false on mismtach, true otherwise.
 		///
-		bool remove( int priority, const std::shared_ptr<Policy> & policy );
+		template< typename PolicyType>
+		bool remove( int priority, const std::shared_ptr<PolicyType> & policy )
+		{
+			return remove( priority, std::dynamic_pointer_cast<Policy>( policy ) );
+		}
 
 		/// Re-evalutate policy matches for the policy at the given priority.
 		///
@@ -169,6 +177,9 @@ namespace dynalog {
 		bool update( int priority );
 
 	protected:
+		bool insert( int priority, std::shared_ptr<Policy> && policy );
+		bool remove( int priority, std::shared_ptr<Policy> && policy );
+
 		/// Storage associating loggers to a policy.
 		///
 		/// Helper functions extract common logic.
@@ -298,13 +309,12 @@ namespace dynalog {
 	template < typename Action >
 	bool visit( Configuration & configuration, Action && action )
 	{
-		auto policy = std::static_pointer_cast<Configuration::Policy>( 
-			make_policy( nullptr, LevelSet{}, capture( action,
-				[]( Action & action, const std::shared_ptr<Logger> & logger )
-				{
-					action( logger );
-					return false;
-				})));
+		auto policy = make_policy( nullptr, LevelSet{}, capture( action,
+			[]( Action & action, const std::shared_ptr<Logger> & logger )
+			{
+				action( logger );
+				return false;
+			}));
 		const auto priority = std::numeric_limits<int>::max();
 		const auto result = configuration.insert( priority, policy );
 		if( result )

@@ -56,7 +56,7 @@ namespace dynalog {
 	/// @param policy Policy instance to insert.
 	/// @return false on conflict, true otherwise.
 	///
-	bool Configuration::insert( int priority, const std::shared_ptr<Policy> & policy )
+	bool Configuration::insert( int priority, std::shared_ptr<Policy> && policy )
 	{
 		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
 
@@ -92,7 +92,7 @@ namespace dynalog {
 	/// @param policy Instance to remove.
 	/// @return false on mismtach, true otherwise.
 	///
-	bool Configuration::remove( int priority, const std::shared_ptr<Policy> & policy )
+	bool Configuration::remove( int priority, std::shared_ptr<Policy> && policy )
 	{
 		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
 

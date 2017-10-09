@@ -11,6 +11,9 @@ namespace dynalog {
 	///
 	using Context = NamedType<const char *, struct ContextParam>;
 
+	/// Strong type for Tag(user specified identifier)
+	using Tag = NamedType<const char *, struct TagParam>;
+
 	enum class Level {
 		CRITICAL,
 		ERROR,

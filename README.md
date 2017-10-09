@@ -87,6 +87,85 @@ The design presumes that each `Policy` is mostly static--if it matches a `Logger
 
 ---
 
+## Usage ##
+
+Dynalog works out of the box. The macro based invocation system "Just Works"(tm), while remaining compatible(and usually desirable) with advanced usage. Logging statements sets of stream formattable arguments, including custom formatters:
+
+```c++
+void algorithm_step_b( ... )
+{
+	// Specify a level, and any set of arguments.
+	//
+	DYNALOG( dynalog::Level::INFO, "Beginning step B at ", dynalog::timestamp::fixed{} );
+
+	cv::Mat result;
+
+	/* ...do some work... */
+
+	DYNALOG( dynalog::Level::INFO, "Finished step B at ", dynalog::timestamp::fixed{}, " with result: ", result );
+}
+```
+
+### Default Policy ###
+
+Macros create loggers managed by the global configuration. The default global policy initial directs all loggers and levels to stdout. Changing that is very easy. Output can be redirected to any unix handle with ease:
+
+```c++
+// Set the default output to stderr.
+//
+dynalog::global::setDefault( dynalog::HandleEmitter::stderr );
+
+// Only allow info and critical level messages.
+//
+dynalog::LevelSet levels;
+levels += dynalog::Level::INFO;
+levels += dynalog::Level::CRITICAL;
+dynalog::global::setDefault( levels );
+
+// Log to a file, delgating ownership of the handle.
+//
+int fd = open( "application.log", O_WRONLY | O_CREATE | O_APPEND );
+dynalog::HandleEmitter logFile( fd, []( int fd ) { close( fd ); });
+dynalog::global::setDefault( &logFile );
+```
+
+### Adding Policies ###
+
+Polices dynamically dictate logger outputs. They operate by matching logger characteristics. An easy way to create matchable characteristics is via the DYNALOG_TAG macro. Alternately, loggers can be dynamically constructed to be easily identified. By default, macro loggers are tagged with the invocation location and calling function context. Policies have absolute priorities used to resolve conflicts.
+
+```c++
+// Create a tag
+//
+static const std::string TAG( "MyTag" );
+
+// Use the tag in a logging point.
+//
+void conditionallyLog( const cv::mat & mat )
+{
+	// Create an easily recognizable logger.
+	//
+	DYNALOG_TAG( TAG.c_str(), dynalog::Level::INFO, mat );
+}
+
+// create a policy to log our tag to stderr.
+//
+dynalog::LevelSet levels;
+levels.set( dynalog::LevelSet::All{}, true );
+auto policy = dynalog::make_policy( dynalog::HandleEmitter::stderr, 
+	levels, 
+	[&TAG]( const std::shared_ptr<dynalog::Logger> & logger )
+	{
+		return tag == logger->tag.value();
+	});
+
+// install the policy at a neutral priority.
+//
+const int priority = 0;
+assert( dynalog::global::configuration.insert( priority, policy ) );
+```
+
+---
+
 ## Future Directions ##
 
 The most pressing goal is to incorporate more functionality out of the box:
