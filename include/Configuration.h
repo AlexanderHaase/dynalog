@@ -65,6 +65,8 @@ namespace dynalog {
 				insert.clear();
 			}
 
+			/// Rewinds pending changes to the managed set.
+			///
 			inline void reset( void )
 			{
 				manage.insert( remove.begin(), remove.end() );
@@ -72,14 +74,20 @@ namespace dynalog {
 				insert.clear();
 			}
 
+			/// Check if any changes are pending
+			///
 			bool pending( void ) const { return !remove.empty() || !insert.empty(); }
 
+			/// Add the collection to the insert set.
+			///
 			template < typename Collection >
 			void update( Insert, const Collection & loggers )
 			{
 				insert.insert( loggers.begin(), loggers.end() );
 			}
 
+			/// Add the collection to the remove set.
+			///
 			template < typename Collection >
 			void update( Remove, const Collection & loggers )
 			{
@@ -192,28 +200,118 @@ namespace dynalog {
 		std::map<int, Node, std::greater<int> > policies;
 	};
 
-
 	/// Match-all policy applies a single configuration to all matched loggers.
 	///
-	class DefaultPolicy : public Configuration::Policy {
+	template < typename Predicate >
+	class PredicatePolicy : public Configuration::Policy, protected Predicate {
 	public:
 		/// Allways matches.
 		///
 		/// @param loggers Set of loggers to search for matches.
 		/// @param matches Vector of matched loggers.
 		///
-		virtual void match( const Configuration::LoggerSet & loggers, Configuration::LoggerVector & matches );
+		virtual void match( const Configuration::LoggerSet & loggers, Configuration::LoggerVector & matches )
+		{
+			for( auto && logger : loggers )
+			{
+				if( Predicate::operator() ( logger ) )
+				{
+					matches.emplace_back( logger );
+				}
+			}
+		}
 
 		/// Update the policy internal state based on a change set.
 		///
 		/// @param changes ChangeSet describing current policies.
 		///
-		virtual void update( const Configuration::ChangeSet & changes );
+		virtual void update( const Configuration::ChangeSet & changes )
+		{
+			for( auto && logger : changes.insert )
+			{
+				logger->emitter.store( emitter, std::memory_order_relaxed );
+				logger->levels = levels;
+			}
 
-		void configure( Emitter * instance );
+			for( auto && logger : changes.manage )
+			{
+				logger->emitter.store( emitter, std::memory_order_relaxed );
+				logger->levels = levels;
+			}
+		}
+
+		/// Configure the emitter for loggers matched by this policy.
+		///
+		/// Call Configuration::update() to take effect.
+		///
+		/// @param instance Emitter to configure for matched loggers.
+		///
+		void configure( Emitter * instance )
+		{
+			emitter = instance;
+		}
+
+		/// Configure enabled log levels for loggers matched by this policy.
+		///
+		/// Call Configuration::update() to take effect.
+		///
+		/// @param enabled LevelSet of enabled log levels to configure for matched loggers.
+		///
+		void configure( const LevelSet & enabled )
+		{
+			levels = enabled;
+		}
+
+		template < typename ...Args >
+		PredicatePolicy( Emitter * instance, const LevelSet & enabled, Args && ...args )
+		: Predicate( std::forward<Args>( args )... )
+		, emitter( instance )
+		, levels( enabled )
+		{}
+
+		operator Predicate &(void) { return static_cast<Predicate&>( *this ); }
 
 	protected:
 		Emitter * emitter;
+		LevelSet levels;
 	};
+
+	/// Helper function to create a predicate policy
+	///
+	template < typename Predicate >
+	auto make_policy( Emitter * instance, const LevelSet & enabled, Predicate && pred )
+		-> std::shared_ptr<PredicatePolicy<Predicate>>
+	{
+		return std::make_shared<PredicatePolicy<Predicate>>( instance, enabled, std::forward<Predicate>( pred ) );
+	}
+
+	struct MatchAll { inline bool operator() (const std::shared_ptr<Logger> &) const { return true; } };
+
+	/// Match-all policy applies a single configuration to all matched loggers.
+	///
+	struct DefaultPolicy : public PredicatePolicy<MatchAll>
+	{
+		using Base = PredicatePolicy<MatchAll>;
+		using Base::Base;
+	};
+
+	template < typename Action >
+	bool visit( Configuration & configuration, Action && action )
+	{
+		auto policy = std::static_pointer_cast<Configuration::Policy>( 
+			make_policy( nullptr, LevelSet{}, capture( action,
+				[]( Action & action, const std::shared_ptr<Logger> & logger )
+				{
+					action( logger );
+					return false;
+				})));
+		const auto priority = std::numeric_limits<int>::max();
+		const auto result = configuration.insert( priority, policy );
+		if( result )
+		{
+			configuration.remove( priority, policy );
+		}
+		return result;
+	}
 }
 

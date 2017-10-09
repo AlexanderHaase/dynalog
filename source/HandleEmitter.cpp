@@ -81,6 +81,8 @@ namespace dynalog {
 	///
 	static async::Replicated<ArrayStream<char,4096> > streams( std::tuple<>{} );
 
+	static thread_local ArrayStream<char,4096> stream;
+
 	/// Receive a message.
 	///
 	/// @param logger Source of the message.
@@ -91,12 +93,13 @@ namespace dynalog {
 		// Use stacked buffer to stream data -- more than 3x faster than stringstream.
 		// TODO: Overflow behavior, sync behavior
 		//
-		auto result = streams.with( [&]( ArrayStream<char,4096> & stream )
-		{
+		//auto result = streams.with( [&]( ArrayStream<char,4096> & stream )
+		//{
 			stream.streambuf.reset();
 			stream.stream << message << std::endl;
-			return stream.streambuf.write( fd );
-		});
+			auto result = stream.streambuf.write( fd );
+			//return stream.streambuf.write( fd );
+		//});
 
 		if( ! result )
 		{

@@ -237,36 +237,4 @@ namespace dynalog {
 		other.changes.update( ChangeSet::Remove{}, scratch );
 		scratch.clear();
 	}
-
-	/// Allways matches.
-	///
-	/// @param loggers Set of loggers to search for matches.
-	/// @param matches Vector of matched loggers.
-	///
-	void DefaultPolicy::match( const Configuration::LoggerSet & loggers, Configuration::LoggerVector & matches )
-	{
-		for( auto && logger : loggers )
-		{
-			matches.emplace_back( logger );
-		}
-	}
-
-	/// Update the policy internal state based on a change set.
-	///
-	/// @param changes ChangeSet describing current policies.
-	///
-	void DefaultPolicy::update( const Configuration::ChangeSet & changes )
-	{
-		for( auto && logger : changes.insert )
-		{
-			logger->emitter.store( emitter, std::memory_order_relaxed );
-		}
-
-		for( auto && logger : changes.manage )
-		{
-			logger->emitter.store( emitter, std::memory_order_relaxed );
-		}
-	}
-
-	void DefaultPolicy::configure( Emitter * instance ) { emitter = instance; }
 }

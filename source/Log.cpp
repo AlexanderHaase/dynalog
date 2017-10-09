@@ -33,9 +33,19 @@ namespace dynalog {
 	namespace global {
 
 		Configuration configuration;
-		DefaultPolicy policy;
+		static DefaultPolicy policy{ HandleEmitter::stdout, LevelSet{ DYNALOG_DEFAULT_LEVELS } };
+		static const int priority = std::numeric_limits<int>::min();
 
-
+		void setDefault( Emitter * emitter )
+		{
+			policy.configure( emitter );
+			configuration.update( priority );
+		}
+		void setDefault( const LevelSet & levels )
+		{
+			policy.configure( levels );
+			configuration.update( priority );
+		}
 		namespace {
 		 	struct Initializer
 			{
@@ -45,8 +55,7 @@ namespace dynalog {
 					//
 					using Policy = Configuration::Policy;
 					std::shared_ptr<Policy> ptr{ &policy, []( Policy * ){} };
-					configuration.insert( std::numeric_limits<int>::min(), ptr );
-					policy.configure( HandleEmitter::stdout );
+					configuration.insert( priority, ptr );
 				}
 
 			};

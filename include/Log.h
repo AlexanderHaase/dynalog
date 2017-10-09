@@ -6,14 +6,14 @@
 
 namespace dynalog {
 
-	/// Bootstrap initializer to associate embedded loggers with default configuration.
+	/// Bootstrap initializer to associate embedded loggers with global configuration.
 	///
 	extern Emitter * const EmbeddedLoggerInit;
 
 	namespace global {
 		extern Configuration configuration;
-		extern DefaultPolicy policy;
-		const int priority = std::numeric_limits<int>::min();
+		void setDefault( Emitter * emitter );
+		void setDefault( const LevelSet & levels );
 	}
 }
 
@@ -30,7 +30,7 @@ namespace dynalog {
 
 // Define a default level mask for generated loggers.
 //
-#define DYNALOG_DEFAULT_LEVELS (~0)
+#define DYNALOG_DEFAULT_LEVELS (~0u)
 
 // Instantiate an embedded logger with the given name
 //

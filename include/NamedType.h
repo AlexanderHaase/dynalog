@@ -18,13 +18,19 @@ namespace dynalog {
 		: instance( std::forward<Check>( value ) )
 		{}
 
-		operator T& () { return value; }
-		operator const T & () { return value; }
+		operator T& () { return value(); }
+		operator const T & () { return value(); }
 
-		T & value() { return value; }
-		const T& value() const { return value; }
+		T & value() { return instance; }
+		const T& value() const { return instance; }
 
 	protected:
 		T instance;
+	};
+
+	template < typename Parameter >
+	class NamedType<void, Parameter> {
+	public:
+		explicit NamedType() {};
 	};
 }

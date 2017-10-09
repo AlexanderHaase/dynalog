@@ -1,5 +1,5 @@
 #pragma once
-#include <dynalog/include/NamedType.h>
+#include <dynalog/include/util.h>
 
 namespace dynalog {
  
@@ -19,6 +19,8 @@ namespace dynalog {
 		VERBOSE,
 		LEVEL_QTY
 	};
+
+	using LevelSet = EnumSet<Level,static_cast<size_t>(Level::LEVEL_QTY)>;
 }
 
 

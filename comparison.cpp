@@ -133,17 +133,14 @@ int main( int argc, const char ** argv )
 	std::shared_ptr<dynalog::HandleEmitter> emitter;
 	emitter = std::make_shared<dynalog::HandleEmitter>( devnull );
 	
-	dynalog::global::policy.configure( emitter.get() );
-	dynalog::global::configuration.update( dynalog::global::priority );
+	dynalog::global::setDefault( emitter.get() );
 	benchmark.measure( "DynaLog('/dev/null')", callable );
 
 	NoOpEmitter nop;
-	dynalog::global::policy.configure( &nop );
-	dynalog::global::configuration.update( dynalog::global::priority );
+	dynalog::global::setDefault( &nop );
 	benchmark.measure( "DynaLog(<NoOp>)", callable );
 
-	dynalog::global::policy.configure( nullptr );
-	dynalog::global::configuration.update( dynalog::global::priority );
+	dynalog::global::setDefault( nullptr );
 	benchmark.measure( "DynaLog(<disabled>)", callable );
 	
 	auto dispatcher = std::make_shared<dynalog::async::Dispatcher>( std::chrono::milliseconds( 1 ), 
@@ -151,8 +148,7 @@ int main( int argc, const char ** argv )
 	dispatcher->run();
 	auto deferredEmitter = std::make_shared<dynalog::async::DeferredEmitter>( dispatcher, emitter.get() );
 
-	dynalog::global::policy.configure( deferredEmitter.get() );
-	dynalog::global::configuration.update( dynalog::global::priority );
+	dynalog::global::setDefault( deferredEmitter.get() );
 	benchmark.measure( "DynaLog(<async>'/dev/null')", callable, [&dispatcher]
 	{
 		dynalog::async::Flush flush;
@@ -161,5 +157,10 @@ int main( int argc, const char ** argv )
 	});
 
 	benchmark.log(std::cout);
+
+	/*dynalog::visit( dynalog::global::configuration, []( const std::shared_ptr<dynalog::Logger> & logger )
+	{
+		std::cout << logger->context.value() << "\t" << logger->location.value() << std::endl;
+	});*/
 	return 0;
 }

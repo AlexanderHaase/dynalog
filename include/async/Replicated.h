@@ -1,6 +1,5 @@
 #pragma once
-#include <thread>
-#include <tuple>
+#include <vector>
 #include <dynalog/include/async/Synchronized.h>
 
 namespace dynalog { namespace async {

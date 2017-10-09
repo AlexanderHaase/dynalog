@@ -49,7 +49,7 @@ namespace dynalog {
 	struct Logger
 	{
 		std::atomic<Emitter*> emitter;	///< Enabled if non-null.
-		std::bitset<static_cast<size_t>(Level::LEVEL_QTY)> levels;	///< Mask of enabled levels.
+		LevelSet levels;	///< Mask of enabled levels.
 		Location location;	///< Unique indentifier for logger.
 		Context context;	///< Group for logger.
 
@@ -67,7 +67,7 @@ namespace dynalog {
 		void log( const Level level, MessageBuilder && builder )
 		{
 			const auto destination = emitter.load( std::memory_order_relaxed );
-			if( destination && levels.test( static_cast<size_t>( level ) ) )
+			if( destination && levels.get( level ) )
 			{
 				Message message;
 				builder( message );
