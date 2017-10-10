@@ -111,6 +111,15 @@ namespace dynalog {
 		using Base = std::bitset<Qty>;
 		using Base::Base;
 
+    EnumSet( std::initializer_list<Enum> list )
+    : Base( 0ul )
+    {
+      for( auto && value : list )
+      {
+        set( value, true );
+      }
+    }
+
 		EnumSet & set( const Enum bit, bool value )
 		{
 			Base::set( static_cast<size_t>( bit ), value );
