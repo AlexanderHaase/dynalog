@@ -52,22 +52,22 @@ namespace dynalog { namespace timestamp {
 	// Specializations implementing get<...>( Atoms & )
 	//
 	template <>
-	const Atoms::Year & get<Atoms::Year>( const Atoms & atoms ) { return atoms.year; }
+	inline const Atoms::Year & get<Atoms::Year>( const Atoms & atoms ) { return atoms.year; }
 
 	template <>
-	const Atoms::Month & get<Atoms::Month>( const Atoms & atoms ) { return atoms.month; }
+	inline const Atoms::Month & get<Atoms::Month>( const Atoms & atoms ) { return atoms.month; }
 
 	template <>
-	const Atoms::Day & get<Atoms::Day>( const Atoms & atoms ) { return atoms.day; }
+	inline const Atoms::Day & get<Atoms::Day>( const Atoms & atoms ) { return atoms.day; }
 
 	template <>
-	const Atoms::Hour & get<Atoms::Hour>( const Atoms & atoms ) { return atoms.hour; }
+	inline const Atoms::Hour & get<Atoms::Hour>( const Atoms & atoms ) { return atoms.hour; }
 
 	template <>
-	const Atoms::Minute & get<Atoms::Minute>( const Atoms & atoms ) { return atoms.minute; }
+	inline const Atoms::Minute & get<Atoms::Minute>( const Atoms & atoms ) { return atoms.minute; }
 
 	template <>
-	const Atoms::Nanoseconds & get<Atoms::Nanoseconds>( const Atoms & atoms ) { return atoms.nanoseconds; }
+	inline const Atoms::Nanoseconds & get<Atoms::Nanoseconds>( const Atoms & atoms ) { return atoms.nanoseconds; }
 
 	/// Time formatting helpers.
 	///
