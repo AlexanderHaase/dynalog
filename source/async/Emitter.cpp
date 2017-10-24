@@ -70,12 +70,12 @@ namespace dynalog { namespace async {
 	}
 
 	Dispatcher::Dispatcher( const std::chrono::steady_clock::duration & latency, 
-			const std::chrono::steady_clock::duration & timeout,
+			const std::chrono::steady_clock::duration & timeout_arg,
 			size_t capacity,
 			size_t heads,
 			size_t partitions )
 	: queue( latency, capacity, 4, heads, partitions )
-	, timeout( timeout )
+	, timeout( timeout_arg )
 	{}
 
 	void DeferredEmitter::emit( const Logger & logger, Message && message )
@@ -83,9 +83,9 @@ namespace dynalog { namespace async {
 		dispatcher->insert( emitter, logger, std::move( message ) );
 	}
 
-	DeferredEmitter::DeferredEmitter( const std::shared_ptr<Dispatcher> & dispatcher, Emitter * emitter )
-	: dispatcher( dispatcher )
-	, emitter( emitter )
+	DeferredEmitter::DeferredEmitter( const std::shared_ptr<Dispatcher> & dispatcher_arg, Emitter * emitter_arg )
+	: dispatcher( dispatcher_arg )
+	, emitter( emitter_arg )
 	{}
 
 	DeferredEmitter::~DeferredEmitter() {}

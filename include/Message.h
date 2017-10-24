@@ -146,7 +146,7 @@ namespace dynalog {
 			///
 			virtual Reflection reflect( size_t index ) const
 			{
-				Reflector reflector{ index };
+				Reflector reflector{ index, Content::Reflection{} };
 				apply( reflector, AllIndexes{} );
 				return reflector.reflection;
 			}

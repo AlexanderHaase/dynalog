@@ -119,8 +119,8 @@ namespace dynalog {
 		/// @param buffer Unique pointer to data area.
 		/// @param size Capacity of the data area.
 		///
-		inline ObjectBuffer( Buffer::Pointer && buffer )
-		: buffer( std::move( buffer ) )
+		inline ObjectBuffer( Buffer::Pointer && other )
+		: buffer( std::move( other ) )
 		{}
 
 		/// Replace the internal buffer(destructs stored object).
@@ -128,10 +128,10 @@ namespace dynalog {
 		/// @param buffer Unique pointer to data area.
 		/// @param size Capacity of the data area.
 		///
-		inline void resize( Buffer::Pointer && buf)
+		inline void resize( Buffer::Pointer && other )
 		{
 			clear();
-			buffer = std::move( buffer );
+			buffer = std::move( other );
 		}
 
 		/// Move-construct from another buffer

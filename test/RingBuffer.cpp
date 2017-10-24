@@ -171,8 +171,8 @@ SCENARIO( "ring buffers should operate as fixed-capacity fifos" )
 		struct DeleteCounter {
 			size_t * counter = nullptr;
 
-			DeleteCounter( size_t * counter = nullptr )
-			: counter( counter ) {}
+			DeleteCounter( size_t * counter_arg = nullptr )
+			: counter( counter_arg ) {}
 
 			DeleteCounter( DeleteCounter && other )
 			{

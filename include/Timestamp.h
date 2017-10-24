@@ -329,7 +329,7 @@ namespace dynalog { namespace timestamp {
 				Formatter::operator() ( stream, atoms );
 			}
 		};
-	};
+	}
 
 	/// Get the fastest coarse system time available.
 	///

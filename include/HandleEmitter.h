@@ -23,14 +23,14 @@ namespace dynalog {
 
 		/// Create a new emitter.
 		///
-		/// @tparam cleanup function for handle.
+		/// @tparam Cleanup function for handle.
 		/// @param handle FD to write to.
-		/// @param cleanup Cleanup function for handle.
+		/// @param function Cleanup function for handle.
 		///
 		template < typename Cleanup >
-		HandleEmitter( int handle, Cleanup && cleanup )
+		HandleEmitter( int handle, Cleanup && function )
 		: fd( handle )
-		, cleanup( std::forward<Cleanup>( cleanup ) )
+		, cleanup( std::forward<Cleanup>( function ) )
 		{}
 
 		inline HandleEmitter( int handle )

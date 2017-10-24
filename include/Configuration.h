@@ -203,7 +203,7 @@ namespace dynalog {
 
 			/// Steal matched loggers form the other node
 			///
-			void override( Node & other, LoggerVector & scratch );
+			void assume( Node & other, LoggerVector & scratch );
 		};
 
 		std::mutex mutex;
@@ -307,9 +307,9 @@ namespace dynalog {
 	};
 
 	template < typename Action >
-	bool visit( Configuration & configuration, Action && action )
+	bool visit( Configuration & configuration, Action && action_arg )
 	{
-		auto policy = make_policy( nullptr, LevelSet{}, capture( action,
+		auto policy = make_policy( nullptr, LevelSet{}, capture( action_arg,
 			[]( Action & action, const std::shared_ptr<Logger> & logger )
 			{
 				action( logger );

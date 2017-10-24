@@ -61,7 +61,7 @@ namespace dynalog { namespace async {
 	: impl( std::make_shared<FlushImpl>() )
 	{}
 
-	std::ostream & operator << ( std::ostream & stream, const Flush::Token & token )
+	std::ostream & operator << ( std::ostream & stream, const Flush::Token & )
 	{
 		return stream << std::flush;
 	}

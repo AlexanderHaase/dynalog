@@ -70,7 +70,7 @@ namespace dynalog { namespace async {
 						break;
 					}
 
-					const bool wait = depos.with( [&]( Depo & depo, std::unique_lock<std::mutex> & lock )
+					const bool wait = depos.with( [&]( Depo & depo, std::unique_lock<std::mutex> & depo_lock )
 					{
 						const bool full = depo.ready.full() || depo.spare.empty();
 						if( full )
@@ -83,7 +83,7 @@ namespace dynalog { namespace async {
 							cache.cache = depo.spare.pop();
 							if( depo.sleeping )
 							{
-								lock.unlock();
+								depo_lock.unlock();
 								depo.condition.notify_one();
 							}
 						}
@@ -210,16 +210,16 @@ namespace dynalog { namespace async {
 		LatencyQueue( const typename Clock::duration & abs_latency,
 			size_t capacity,
 			size_t scale = 1,
-			size_t readersPerDepo = 1,
+			size_t nReadersPerDepo = 1,
 			size_t nDepos = 1 )
 		: latency( abs_latency * readersPerDepo )
 		, caches( std::make_tuple( capacity ) )
 		, depos( nDepos, std::make_tuple( abs_latency,
 			capacity, 
-			readersPerDepo, 
+			nReadersPerDepo, 
 			(caches.size() + 1) / nDepos - 1,
 			scale ) )
-		, readersPerDepo( readersPerDepo )
+		, readersPerDepo( nReadersPerDepo )
 		{}
 
 	protected:

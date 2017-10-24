@@ -94,7 +94,7 @@ struct NoOpEmitter : public dynalog::Emitter
 	virtual void emit( const dynalog::Logger &, dynalog::Message && ) {}
 };
 
-int main( int argc, const char ** argv )
+int main( int, const char ** )
 {
 	DYNALOG_TAG( "<ExampleTag>", dynalog::Level::VERBOSE, "Performance comparison of formatting output(relative to slowest):" );
 	Benchmark benchmark;
@@ -120,14 +120,14 @@ int main( int argc, const char ** argv )
 
 	benchmark.measure( "stringstream(<internal buffer>)", []()
 	{
-		std::stringstream stream;
-		stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl;
+		std::stringstream sstream;
+		sstream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl;
 	});
 	benchmark.measure( "stringstream(<internal buffer>) => write('/dev/null')", [devnull]()
 	{
-		std::stringstream stream;
-		stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl;
-		return write( devnull, stream.str().c_str(), stream.str().size() );
+		std::stringstream sstream;
+		sstream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl;
+		return write( devnull, sstream.str().c_str(), sstream.str().size() );
 	});
 	
 	std::shared_ptr<dynalog::HandleEmitter> emitter;

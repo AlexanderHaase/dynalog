@@ -60,7 +60,7 @@ namespace dynalog {
 	{
 		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
 
-		auto result = policies.emplace( priority, Node{ policy } );
+		auto result = policies.emplace( priority, Node{ policy, ChangeSet{} } );
 
 		if( result.second )
 		{
@@ -71,7 +71,7 @@ namespace dynalog {
 			//
 			for( ++iter; iter != policies.end(); ++iter )
 			{
-				node->second.override( iter->second, scratch );
+				node->second.assume( iter->second, scratch );
 			}
 
 			// Apply removals, then inserts
@@ -107,7 +107,7 @@ namespace dynalog {
 			//
 			for( ++iter; iter != policies.end(); ++iter )
 			{
-				iter->second.override( node->second, scratch );
+				iter->second.assume( node->second, scratch );
 			}
 
 			// Move remaining loggers to remove state
@@ -151,14 +151,14 @@ namespace dynalog {
 			for( ++iter; iter != policies.end(); ++iter )
 			{
 				iter->second.adopt( orphans, scratch );
-				node->second.override( iter->second, scratch );
+				node->second.assume( iter->second, scratch );
 			}
 
 			// Carefully update policies--insert only after removal
 			//
 			auto delayed = std::move( node->second.changes.insert );
 
-			for( auto iter = node; iter != policies.end(); ++iter )
+			for( iter = node; iter != policies.end(); ++iter )
 			{
 				iter->second.update();
 			}
@@ -230,7 +230,7 @@ namespace dynalog {
 
 	/// Steal matched loggers form the other node
 	///
-	void Configuration::Node::override( Node & other, LoggerVector & scratch )
+	void Configuration::Node::assume( Node & other, LoggerVector & scratch )
 	{
 		policy->match( other.changes.manage, scratch );
 		changes.update( ChangeSet::Insert{}, scratch );

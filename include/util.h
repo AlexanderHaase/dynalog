@@ -41,7 +41,7 @@ namespace dynalog {
 	template < typename Func, typename ...Args, size_t ...Selected >
 	auto apply_tuple( const std::tuple<Args...> & value,
 		Func && func, 
-		IndexSequence<Selected...> selected )
+		IndexSequence<Selected...> )
 		-> decltype( func( std::declval<Args>()... ) )
 	{
 			return func( std::get<Selected>( value )... );
@@ -70,8 +70,8 @@ namespace dynalog {
 	    T x;
 	    F f;
 	public:
-	    capture_impl( T && x, F && f )
-		: x{std::forward<T>(x)}, f{std::forward<F>(f)}
+	    capture_impl( T && x_arg, F && f_arg )
+		: x{std::forward<T>(x_arg)}, f{std::forward<F>(f_arg)}
 	    {}
 
 	    template <typename ...Ts> auto operator()( Ts&&...args )
