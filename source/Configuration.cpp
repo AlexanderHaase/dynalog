@@ -14,7 +14,7 @@ namespace dynalog {
 		LoggerSet available;
 		available.insert( logger );
 
-		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
+		std::unique_lock<std::mutex> lock( mutex );
 		for( auto && pair : policies )
 		{
 			pair.second.adopt( available, scratch );
@@ -34,7 +34,7 @@ namespace dynalog {
 	///
 	bool Configuration::remove( const std::shared_ptr<Logger> & logger )
 	{
-		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
+		std::unique_lock<std::mutex> lock( mutex );
 		for( auto && pair : policies )
 		{
 			if( pair.second.changes.manage.erase( logger ) )
@@ -58,7 +58,7 @@ namespace dynalog {
 	///
 	bool Configuration::insert( int priority, std::shared_ptr<Policy> && policy )
 	{
-		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
+		std::unique_lock<std::mutex> lock( mutex );
 
 		auto result = policies.emplace( priority, Node{ policy, ChangeSet{} } );
 
@@ -94,7 +94,7 @@ namespace dynalog {
 	///
 	bool Configuration::remove( int priority, std::shared_ptr<Policy> && policy )
 	{
-		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
+		std::unique_lock<std::mutex> lock( mutex );
 
 		const auto node = policies.find( priority );
 		const bool result = node != policies.end() && node->second.policy == policy;
@@ -133,7 +133,7 @@ namespace dynalog {
 	///
 	bool Configuration::rescan( int priority )
 	{
-		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
+		std::unique_lock<std::mutex> lock( mutex );
 
 		const auto node = policies.find( priority );
 		const bool result = node != policies.end();
@@ -178,7 +178,7 @@ namespace dynalog {
 	///
 	bool Configuration::update( int priority )
 	{
-		std::unique_lock<std::mutex> lock( mutex, std::try_to_lock );
+		std::unique_lock<std::mutex> lock( mutex );
 
 		const auto node = policies.find( priority );
 		const bool result = node != policies.end();

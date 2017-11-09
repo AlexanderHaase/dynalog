@@ -1,5 +1,7 @@
 #pragma once
 
+#include <limits>
+
 namespace dynalog {
 
 	/// Named type wrapper for more explicit interfaces.
@@ -19,7 +21,7 @@ namespace dynalog {
 		{}
 
 		operator T& () { return value(); }
-		operator const T & () { return value(); }
+		operator const T & () const { return value(); }
 
 		T & value() { return instance; }
 		const T& value() const { return instance; }
@@ -33,4 +35,12 @@ namespace dynalog {
 	public:
 		explicit NamedType() {};
 	};
+}
+
+namespace std {
+
+  /// Delegate limits to underlying type.
+  ///
+	template < typename T, typename Parameter >
+  struct numeric_limits<::dynalog::NamedType<T,Parameter>> : numeric_limits<T> {};
 }
