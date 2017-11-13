@@ -1,5 +1,5 @@
 project( 'c++ DynaLog', 'cpp', 
-	version : '0.2.3', 
+	version : '0.2.4', 
 	license : 'BSD 3-clause' )
 
 # TODO: add compiler version tests

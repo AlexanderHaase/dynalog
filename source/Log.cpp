@@ -12,10 +12,30 @@ namespace dynalog {
 		virtual ~BootstrapEmitter() {}
 		virtual void emit( const Logger & logger, Message && message )
 		{
-			// safely wrap embedded logger in shared_ptr with no-op deleter
+			// Safely wrap embedded logger in shared_ptr with no-op deleter
 			//
 			std::shared_ptr<Logger> ptr{ const_cast<Logger*>(&logger), [](Logger*){} };
 			global::configuration.insert( ptr );
+
+      // Try to re-check level using reflection
+      //
+      const auto limit = message.content().size();
+      for( size_t index = 0; index < limit; ++index )
+      {
+        const auto reflection = message.content().reflect( index );
+        if( !reflection.is<Level>() )
+        {
+          continue;
+        }
+        else if( logger.levels.get( reflection.as<Level>() ) )
+        {
+          break;
+        }
+        else
+        {
+          return;
+        }
+      }
 
 			// Emit message if one was configured
 			//

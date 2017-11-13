@@ -34,6 +34,17 @@ namespace dynalog {
 					info = &typeid( typename std::decay<Type>::type );
 					object = &type;
 				}
+
+				template < typename Type >
+        bool is() const { return info && typeid(typename std::decay<Type>::type) == *info; }
+
+				template < typename Type >
+        auto as() const
+          -> typename std::add_lvalue_reference<typename std::add_const<Type>::type>::type
+        {
+          using CastType = typename std::add_pointer<typename std::add_const<Type>::type>::type;
+          return *reinterpret_cast<CastType>( object );
+        }
 			};
 
 			virtual ~Content( void ) {}
