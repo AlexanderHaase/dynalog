@@ -1,5 +1,6 @@
 #pragma once
 #include <dynalog/include/ObjectBuffer.h>
+#include <dynalog/include/MessageBuffer.h>
 #include <dynalog/include/util.h>
 #include <typeindex>
 #include <ostream>
@@ -169,12 +170,13 @@ namespace dynalog {
 		void format( Args && ... args )
 		{
 			const size_t required = sizeof( Class );
-			if( buffer.size() < required )
+			if( buffer == nullptr || buffer->capacity() < required )
 			{
-				buffer.resize( required );
+        buffer = MessageBuffer::create( required );
+  		  //buffer.resize( required );
 				//buffer.resize( cached( required ) );
 			}
-			buffer.emplace< Body<Args...> >( std::forward<Args>( args )... );
+			buffer->emplace< Body<Args...> >( std::forward<Args>( args )... );
 		}
 
 		/// Helper to allow injecting of aribtrary class as the first 
@@ -188,22 +190,22 @@ namespace dynalog {
 
 		/// Accessor for content.
 		///
-		Content & content() { return buffer.as<Content>(); }
+		Content & content() { return buffer->as<Content>(); }
 
 		/// Accessor for content.
 		///
-		const Content & content() const { return buffer.as<const Content>(); }
+		const Content & content() const { return buffer->as<const Content>(); }
 
 		/// Check if message is populated.
 		///
-		bool empty( void ) const { return buffer.empty(); }
+		bool empty( void ) const { return buffer == nullptr || buffer->empty(); }
 
 	protected:
 		/// Return a cached buffer for the size, if available.
 		///
 		static Buffer::Pointer cached( size_t size );
 
-		ObjectBuffer buffer;	///< Storage for message contents.
+		MessageBuffer::Pointer buffer;	///< Storage for message contents.
 	};
 
 

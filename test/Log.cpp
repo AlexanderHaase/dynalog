@@ -18,6 +18,8 @@ struct Test
   }
 };
 
+constexpr const char * Test::TAG;
+
 SCENARIO( "bootstrap logger should prevent logging if level is in message body" )
 {
 	GIVEN( "a policy and a bootstrapped call" )
