@@ -12,75 +12,7 @@
 #include <cstring>
 #include <iomanip>
 #include <unistd.h>
-
-template < size_t Iterations = 1000000, typename Callable, typename PostCondition >
-double usecPerCall( Callable && callable, PostCondition && condition )
-{
-	struct timeval begin, end;
-	gettimeofday( &begin, nullptr );
-
-	for( size_t index = 0; index < Iterations; ++index )
-	{
-		callable();
-	}
-
-	condition();
-
-	gettimeofday( &end, nullptr );
-
-	const auto elapsed = ( end.tv_sec - begin.tv_sec ) * 1000000 + end.tv_usec - begin.tv_usec;
-
-	return double(elapsed)/double(Iterations);
-}
-
-
-struct Benchmark
-{
-	std::vector<std::tuple<std::string, double> > results;
-
-
-	template< typename Callable, typename PostCondition >
-	void measure( const std::string & tag, Callable && callable, PostCondition && condition )
-	{
-		results.emplace_back( tag, usecPerCall( std::forward<Callable>( callable ), std::forward<PostCondition>( condition ) ) );
-	}
-
-	template< typename Callable >
-	void measure( const std::string & tag, Callable && callable )
-	{
-		measure( tag, std::forward<Callable>( callable ), []{} );
-	}
-
-	double worst( void )
-	{
-		double max = std::numeric_limits<double>::min();
-		for( auto && result : results )
-		{
-			auto usec = std::get<1>( result );
-			if( usec > max )
-			{
-				max = usec;
-			}
-		}
-		return max;
-	}
-
-	void log( std::ostream & stream, double baseline )
-	{
-		for( auto && result : results )
-		{
-			auto & tag = std::get<0>( result );
-			auto usec = std::get<1>( result );
-			auto relative = baseline / usec;
-			stream << std::setprecision( 5 ) << std::fixed << usec << " usec/call (";
-			stream << std::setprecision( 2 ) << std::fixed << relative;
-			stream << " x)\t" << tag << std::endl;
-		}
-	}
-
-	void log( std::ostream & stream ) { log( stream, worst() ); }
-};
-
+#include <fstream>
 
 struct Callable
 {
@@ -95,23 +27,23 @@ struct NoOpEmitter : public dynalog::Emitter
 	virtual void emit( const dynalog::Logger &, dynalog::Message && ) {}
 };
 
-int main( int, const char ** )
+int main( int argc, const char ** argv )
 {
-  dynalog::Benchmark bench;
+  dynalog::Benchmark benchmark;
 
 	DYNALOG_TAG( "<ExampleTag>", dynalog::Level::VERBOSE, "Performance comparison of formatting output(relative to slowest):" );
 	//Benchmark benchmark;
 
 	int devnull =  open( "/dev/null", O_WRONLY );
-  bench.measure( "dprintf('/dev/null')", [devnull]() { dprintf( devnull, "%s%s%s\n", "MAIN", "VERBOSE", "inside callable" ); } );
+  benchmark.measure( "dprintf('/dev/null')", [devnull]() { dprintf( devnull, "%s%s%s\n", "MAIN", "VERBOSE", "inside callable" ); } );
 
-	bench.measure( "snprintf(<internal buffer>)", []()
+	benchmark.measure( "snprintf(<internal buffer>)", []()
 	{
 		std::array<char,1024> buffer;
 		snprintf( buffer.begin(), buffer.size(), "%s%s%s\n", "MAIN", "VERBOSE", "inside callable" ); 
 	});
 
-	bench.measure( "snprintf(<internal buffer>) => write('/dev/null')", [devnull]()
+	benchmark.measure( "snprintf(<internal buffer>) => write('/dev/null')", [devnull]()
 	{
 		std::array<char,1024> buffer;
 		auto length = snprintf( buffer.begin(), buffer.size(), "%s%s%s\n", "MAIN", "VERBOSE", "inside callable" );
@@ -119,14 +51,14 @@ int main( int, const char ** )
 	});
 
 	std::fstream stream( "/dev/null", std::ios_base::out );
-	bench.measure( "fstream('/dev/null')", [&stream]() { stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl << std::flush; } );
+	benchmark.measure( "fstream('/dev/null')", [&stream]() { stream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl << std::flush; } );
 
-	bench.measure( "stringstream(<internal buffer>)", []()
+	benchmark.measure( "stringstream(<internal buffer>)", []()
 	{
 		std::stringstream sstream;
 		sstream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl;
 	});
-	bench.measure( "stringstream(<internal buffer>) => write('/dev/null')", [devnull]()
+	benchmark.measure( "stringstream(<internal buffer>) => write('/dev/null')", [devnull]()
 	{
 		std::stringstream sstream;
 		sstream << "MAIN" << dynalog::Level::VERBOSE << "inside callable" << std::endl;
@@ -137,14 +69,14 @@ int main( int, const char ** )
 	emitter = std::make_shared<dynalog::HandleEmitter>( devnull );
 	
 	dynalog::global::setDefault( emitter.get() );
-	bench.measure( "DynaLog('/dev/null')", callable );
+	benchmark.measure( "DynaLog('/dev/null')", callable );
 
 	NoOpEmitter nop;
 	dynalog::global::setDefault( &nop );
-	bench.measure( "DynaLog(<NoOp>)", callable );
+	benchmark.measure( "DynaLog(<NoOp>)", callable );
 
 	dynalog::global::setDefault( nullptr );
-	bench.measure( "DynaLog(<disabled>)", callable );
+	benchmark.measure( "DynaLog(<disabled>)", callable );
 	
 	auto dispatcher = std::make_shared<dynalog::async::Dispatcher>( std::chrono::milliseconds( 1 ), 
 		std::chrono::seconds(10), 512, 4 );
@@ -152,14 +84,20 @@ int main( int, const char ** )
 	auto deferredEmitter = std::make_shared<dynalog::async::DeferredEmitter>( dispatcher, emitter.get() );
 
 	dynalog::global::setDefault( deferredEmitter.get() );
-	bench.measure( "DynaLog(<async>'/dev/null')", callable, [&dispatcher]
+	benchmark.measure( "DynaLog(<async>'/dev/null')", callable, [&dispatcher]
 	{
 		dynalog::async::Flush flush;
 		dispatcher->flush( flush );
 		flush.wait();
 	});
 
-  bench.summary(std::cout);
+  benchmark.summary(std::cout);
+
+  if( argc > 1 )
+  {
+    std::ofstream file{ argv[ 1 ] };
+    benchmark.json( file );
+  } 
 	//benchmark.log(std::cout);
 
 	/*dynalog::visit( dynalog::global::configuration, []( const std::shared_ptr<dynalog::Logger> & logger )

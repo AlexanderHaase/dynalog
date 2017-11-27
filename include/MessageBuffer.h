@@ -74,7 +74,7 @@ namespace dynalog {
       clear();
     }
 
-    /*/// Access contained object by cast.
+    /// Access contained object by cast.
     ///
     /// @tparm T Type of inner object--unchecked!
     ///
@@ -92,9 +92,9 @@ namespace dynalog {
     inline const T & as() const
     {
       return reinterpret_cast<const ObjectAdapter<T>*>( data() )->object();
-    }*/
+    }
 
-    /// Access contained object by cast.
+    /*/// Access contained object by cast.
     ///
     /// @tparm T Type of inner object--unchecked!
     ///
@@ -102,7 +102,7 @@ namespace dynalog {
     inline T & as() const
     {
       return static_cast<ObjectAdapter<T>*>( object )->object();
-    }
+    }*/
 
     
 

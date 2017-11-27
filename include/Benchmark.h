@@ -70,6 +70,23 @@ namespace dynalog {
       }
     }
 
+    void json( std::ostream & stream ) const
+    {
+      bool delim = false;
+      stream << "{";
+      for( const auto & pair : targets )
+      {
+        if( delim )
+        {
+          stream << ", ";
+        }
+        delim = true;
+        stream << "\"" << pair.first << "\": ";
+        pair.second.json( stream );
+      }
+      stream << "}";
+    }
+
     /// Sample set for a specific target.
     ///
     /// Samples are collected via a fixture helper.
@@ -95,8 +112,9 @@ namespace dynalog {
 
       void json( std::ostream & stream ) const
       {
-        stream << "{\"mean(usec)\": " << std::chrono::duration_cast<microseconds_double>( mean ).count();
-        stream << ",\"stdev(usec)\": " << std::chrono::duration_cast<microseconds_double>( mean ).count();
+        const auto scale = 1.0/double( iterations );
+        stream << "{\"mean(usec)\": " << std::chrono::duration_cast<microseconds_double>( mean ).count() * scale;
+        stream << ",\"stdev(usec)\": " << std::chrono::duration_cast<microseconds_double>( stdev ).count() * scale;
         stream << ",\"estimate(usec)\": " << std::chrono::duration_cast<microseconds_double>( estimate ).count();
         stream << ",\"budget(usec)\": " << std::chrono::duration_cast<microseconds_double>( budget ).count();
         stream << ",\"iterations\": " << iterations;
@@ -111,7 +129,7 @@ namespace dynalog {
             stream << ", ";
           }
           delim = true;
-          stream << "{\"elapsed\": " << std::chrono::duration_cast<microseconds_double>( sample.elapsed ).count();
+          stream << "{\"elapsed\": " << std::chrono::duration_cast<microseconds_double>( sample.elapsed ).count() * scale;
           stream << ",\"outlier\": " <<(sample.outlier ? "true" : "false") << "}";
         }
         stream << "]}";
