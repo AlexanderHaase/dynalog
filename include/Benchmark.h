@@ -29,6 +29,7 @@ namespace dynalog {
       baseline.collect( [](){ clock::now(); }, [](){} );
       baseline.analyze_gaussian();
       budget = baseline.mean;
+      uncertainty = clock::duration{ baseline.mean.count() / baseline.iterations };
     }
 
     template < typename Context, typename = decltype( std::declval<Context>()( declref<Sampler>() ) ) >
@@ -36,7 +37,7 @@ namespace dynalog {
     {
       const auto result = targets.emplace( std::piecewise_construct,
         std::forward_as_tuple( name ),
-        std::forward_as_tuple( budget ) );
+        std::forward_as_tuple( budget, uncertainty ) );
 
       const auto iter = result.first;
       Sampler{ iter->second }.evaluate( context );
@@ -48,7 +49,7 @@ namespace dynalog {
     {
       const auto result = targets.emplace( std::piecewise_construct,
         std::forward_as_tuple( name ),
-        std::forward_as_tuple( budget ) );
+        std::forward_as_tuple( budget, uncertainty ) );
 
       const auto iter = result.first;
       Sampler{ iter->second }.measure( std::forward<Callable>( callable ), std::forward<PostCondition>( condition ) );
@@ -75,8 +76,9 @@ namespace dynalog {
     ///
     class Target {
      public:
-      Target( const clock::duration & budget_arg )
+      Target( const clock::duration & budget_arg, const clock::duration & uncertainty_arg )
       : budget( budget_arg )
+      , uncertainty( uncertainty_arg )
       {}
 
       Target( size_t iterations_arg, size_t count_arg )
@@ -119,11 +121,19 @@ namespace dynalog {
       ///
       /// Also warms up the cache.
       ///
+      /// TODO: Better algorithm for choosing number of samples.
+      ///
       template <typename Callable, typename PostCondition >
       void calibrate( Callable && callable, PostCondition && condition )
       {
         for( iterations = 1; (estimate = time( callable, condition )) < budget; iterations *= 2 );
-        count = 10000;
+
+        // => uncertainty = estimate / ( iterations * sqrt(count) )
+        // => count = ((iterations * uncertainty)/estimate)^2
+        //count = 10000;
+        count = (10000 * iterations * uncertainty.count()) / estimate.count();
+        //count = count * count;
+        count = std::min( size_t{10000}, std::max( size_t{100}, count ) );
       }
 
       /// Collects the specified number of observations.
@@ -223,6 +233,7 @@ namespace dynalog {
       };
   
       clock::duration budget; ///< Budget for a single iteration.
+      clock::duration uncertainty; ///< desired uncertainty.
       clock::duration estimate;
       clock::duration upper;
       clock::duration lower;
@@ -276,7 +287,8 @@ namespace dynalog {
     };
 
    protected:
-    clock::duration budget;  
+    clock::duration budget;
+    clock::duration uncertainty;
     std::map<std::string,Target> targets;
   };
 
