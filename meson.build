@@ -27,11 +27,10 @@ base_includes = include_directories( '../' )
 subdir( 'source' )
 subdir( 'test' )
 
-
-
 # Example program
 #
 example_exe = executable( 'comparison', 'comparison.cpp',
 	include_directories : base_includes,
 	cpp_args : cpp_flags,
 	link_with : libdynalog )
+
