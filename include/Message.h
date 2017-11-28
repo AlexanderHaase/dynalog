@@ -198,7 +198,7 @@ namespace dynalog {
 
 		/// Check if message is populated.
 		///
-		bool empty( void ) const { return buffer == nullptr || buffer->empty(); }
+		bool empty( void ) const { return buffer == nullptr; }
 
 	protected:
 		/// Return a cached buffer for the size, if available.

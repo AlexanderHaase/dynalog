@@ -14,16 +14,22 @@ def count( iterable ):
 def plot_samples( title, data ):
   mean = data[ 'mean(usec)' ]
   stdev = data[ 'stdev(usec)' ]
-  bin_width = data[ 'stdev(usec)' ] * 4.0 * 5.0 / 95.0
+
   get_elapsed = lambda obj: obj[ 'elapsed' ]
   get_outlier = lambda obj: obj[ 'outlier' ]
   get_filtered = lambda obj: not obj[ 'outlier' ]
   samples = lambda: map( get_elapsed, data[ 'samples' ] )
+
   min_value = min( samples() )
   real_max = max( samples() )
-  max_value = min( real_max, mean + stdev * 8.0 )
-  #max_value = max( samples() )
+  if stdev:
+    max_value = min( real_max, mean + stdev * 8.0 )
+    bin_width = stdev * 4.0 * 5.0 / 95.0
+  else:
+    max_value = real_max
+    bin_width = (max_value - min_value)/100.0
   bin_count = int(( max_value - min_value ) / bin_width + 1)
+
   outliers = list( map( get_elapsed, filter( get_outlier, data[ 'samples' ] ) ) )
   filtered = list( map( get_elapsed, filter( get_filtered, data[ 'samples' ] ) ) )
   bins = numpy.linspace( min_value, max_value, bin_count )
