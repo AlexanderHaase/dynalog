@@ -1,166 +1,198 @@
 #pragma once
-#include <memory>
-#include <dynalog/include/Buffer.h>
+#include <atomic>
+#include <dynalog/include/ARC.h>
 
 namespace dynalog {
 
-	/// Re-usable buffer for instantiating objects of varying size.
-	///
-	/// ObjectBuffers can be used to in-place construct objects of varying
-	/// size, conceptually in-conjunction with an object-buffer caching 
-	/// scheme. ObjectBuffers safely deconstruct the stored object and
-	/// free internal storage at their own destruction. Resizing or
-	/// emplacing
-	///
-	/// Future: consider expansion to a generational allocator for multiple objects.
-	///
-	class ObjectBuffer {
-	public:
-		/// Resize the object buffer, destroying any stored object.
-		///
-		/// @param size intended capacity of the object buffer.
-		///
-		inline void resize( size_t size )
-		{
-			clear();
-			buffer = Buffer::create( size );
-		}
+  /// Buffer/erasure for Message contents.
+  ///
+  /// Provides buffer/erasure semantics, attempting to reduce copy/move size to
+  /// a single pointer.
+  ///
+  /// Utilizes arc anticipating multiple message consumers.
+  ///
+  class ObjectBuffer : public arc::Object<ObjectBuffer> {
+   public:
 
-		/// Destroy the contained object, if any.
-		///
-		inline void clear( void )
-		{
-			if( ! empty() ) {
-				destructor( buffer->data() );
-				destructor = nullptr;
-				info = nullptr;
-			}
-		}
+    /// Pointer type for message buffer.
+    ///
+    /// Reference counted: move is free, shallow copy is cheap.
+    ///
+    using Pointer = arc::Pointer<ObjectBuffer>;
 
-		/// Size of current buffer.
-		///
-		inline size_t size( void ) const
-		{
-			return buffer == nullptr ? 0 : buffer->size();
-		}
+    /// Access contained type object(std::decay<T>::type).
+    ///
+    /// @return type_info of contained type, or typeid(nullptr_t) if empty.
+    ///
+    const std::type_info & type() const { return as<ObjectInterface>().type(); }
 
-		/// Access the type_info of the contained object, if any.
-		///
-		/// @return std::type_info for the object or nullptr if empty.
-		///
-		inline const std::type_info * type( void ) const { return info; };
+    /// Query capacity of message buffer.
+    ///
+    size_t capacity() const { return bytes - sizeof(ObjectInterface); }
 
-		/// Check if the buffer is in use.
-		///
-		/// @return true if buffer is occupied, false otherwise.
-		///
-		inline bool empty( void ) const { return destructor == nullptr; }
+    /// Query size of message buffer contents.
+    ///
+    size_t size() const { return object().size(); }
 
-		/// Invoke a Type's destructor on an arbitrary pointer.
-		///
-		/// @tparam Type Type for which to invoke destructor.
-		/// @param pointer Pointer to apply destructor to.
-		///
-		template < typename Type >
-		static void call_destructor( void * pointer )
-		{
-			reinterpret_cast<Type*>( pointer )->~Type();
-		}
+    /// Release/destroy message buffer contents.
+    ///
+    void clear()
+    {
+      object().~ObjectInterface();
+      new (data()) EmptyObject{};
+    }
 
-		/// Create an object in the buffer.
-		///
-		/// clears and resizes the buffer if appropriate.
-		///
-		/// @tparam Type The type of object to construct.
-		/// @tparam Args... Type pack for instantiating the object.
-		/// @param args... Parameter pack for instantiation the object.
-		/// @return Reference to the instantiated object.
-		///
-		template < typename Type, typename ... Args >
-		Type & emplace( Args && ...args )
-		{
-			if( size() < sizeof(Type) )
-			{
-				resize( sizeof(Type) );
-			}
-			else
-			{
-				clear();
-			}
-			destructor = &call_destructor<Type>;
-			info = &typeid(Type);
-			return *(new (buffer->data()) Type( std::forward<Args>( args )... ));
-		}
+    /// Query if message buffer is empty.
+    ///
+    bool empty() const { return object().empty(); }
 
-		/// Access the buffer as an instance of Type.
-		///
-		/// @tparam Type Presumed type of stored object--NOT checked!
-		/// @return Reference to the stored object.
-		/// 
-		template < typename Type >
-		Type & as( void ) { return *reinterpret_cast<Type*>( buffer->data() ); }
+    /// Create a new object in the message buffer, deleting the prior(if any).
+    ///
+    /// @tparam T Type to construct.
+    /// @tparam Args Argument types for constructor arguments.
+    /// @param args Constructor arguments.
+    /// @return true if new object created, false otherwise.
+    ///
+    template < typename T, typename ...Args >
+    bool emplace( Args && ...args )
+    {
+      const bool result = (sizeof(ObjectAdapter<T>) + sizeof(T)) <= bytes;
+      if( result )
+      {
+        object().~ObjectInterface();
+        new (data()) ObjectAdapter<T>{ std::forward<Args>( args )... };
+      }
+      return result;
+    }
 
-		/// Const access the buffer as an instance of Type.
-		///
-		/// @tparam Type Presumed type of stored object--NOT checked!
-		/// @return Reference to the stored object.
-		/// 
-		template < typename Type >
-		const Type & as( void ) const { return *reinterpret_cast<const Type*>( buffer->data() ); }
+    /// Destructor: clear buffer.
+    ///
+    ~ObjectBuffer()
+    {
+      object().~ObjectInterface();
+    }
 
-		inline ~ObjectBuffer() { clear(); }
+    /// Access contained object by cast.
+    ///
+    /// @tparm T Type of inner object--unchecked!
+    ///
+    template < typename T >
+    inline T & as()
+    {
+      return reinterpret_cast<ObjectAdapter<T>*>( data() )->object();
+    }
 
-		/// Keep default constructor.
-		///
-		constexpr ObjectBuffer() = default;
+    /// Access contained object by cast.
+    ///
+    /// @tparm T Type of inner object--unchecked!
+    ///
+    template < typename T >
+    inline const T & as() const
+    {
+      return reinterpret_cast<const ObjectAdapter<T>*>( data() )->object();
+    }
 
-		/// Construct from a buffer.
-		///
-		/// @param buffer Unique pointer to data area.
-		/// @param size Capacity of the data area.
-		///
-		inline ObjectBuffer( Buffer::Pointer && other )
-		: buffer( std::move( other ) )
-		{}
+    /// Create a new buffer with the requested capacity.
+    ///
+    /// @param requested Requested capacity in bytes.
+    ///
+    static ObjectBuffer::Pointer create( size_t capacity )
+    {
+      const auto required = capacity + sizeof(ObjectInterface);
+      const auto size = required + sizeof(ObjectBuffer);
+      return new (::operator new(size)) ObjectBuffer{ required };
+    }
 
-		/// Replace the internal buffer(destructs stored object).
-		///
-		/// @param buffer Unique pointer to data area.
-		/// @param size Capacity of the data area.
-		///
-		inline void resize( Buffer::Pointer && other )
-		{
-			clear();
-			buffer = std::move( other );
-		}
+    // Delete copy and move operations: not well formed without more wrapping.
+    //
+    ObjectBuffer( const ObjectBuffer & ) = delete;
+    ObjectBuffer( ObjectBuffer && ) = delete;
+    ObjectBuffer & operator = ( const ObjectBuffer & ) = delete;
+    ObjectBuffer & operator = ( ObjectBuffer && ) = delete;
 
-		/// Move-construct from another buffer
-		///
-		inline ObjectBuffer( ObjectBuffer && other )
-		: info( other.info )
-		, destructor( other.destructor )
-		, buffer( std::move( other.buffer ) )
-		{
-			other.info = nullptr;
-			other.destructor = nullptr;
-		}
+   protected:
 
-		/// Move-assign
-		///
-		inline ObjectBuffer & operator = ( ObjectBuffer && other )
-		{
-			clear();
-			info = other.info;
-			destructor = other.destructor;
-			buffer = std::move( other.buffer );
-			other.info = nullptr;
-			other.destructor = nullptr;
-			return *this;
-		}
+    /// Create a message buffer, specifying the capacity.
+    ///
+    /// Only use with placement new!
+    ///
+    ObjectBuffer( size_t size )
+    : bytes( size )
+    {
+      new (data()) EmptyObject{};
+    }
 
-	protected:
-		const std::type_info * info = nullptr;
-		void (* destructor)(void *) = nullptr;
-		Buffer::Pointer buffer;
-	};
+    /// Access raw buffer.
+    ///
+    inline void * data() { return static_cast<void*>( this + 1 ); }
+
+    /// Access raw buffer.
+    ///
+    inline const void * data() const { return static_cast<const void*>( this + 1 ); }
+
+    /// Interface for contained objects--encapsulates common traits,
+    /// provides virtual destructor.
+    ///
+    struct ObjectInterface
+    {
+      virtual ~ObjectInterface() = default;
+      virtual size_t size() const  = 0;
+      virtual bool empty() const = 0;
+      virtual const std::type_info & type() const = 0;
+    };
+
+    /// Empty object type.
+    ///
+    /// Constructed when no other object in place, buffer is always non-empty.
+    ///
+    struct EmptyObject
+    {
+      virtual ~EmptyObject() = default;
+      virtual size_t size() const { return 0; }
+      virtual bool empty() const { return true; }
+      virtual const std::type_info & type() const { return typeid(std::nullptr_t); }
+    };
+
+    /// Adapts arbitrary types to the object interface.
+    ///
+    /// Provides virtual destructor and access to contained type.
+    ///
+    template < typename T >
+    struct ObjectAdapter : ObjectInterface
+    {
+      template < typename ... Args >
+      ObjectAdapter( Args && ... args )
+      {
+        new ( &object() ) T{ std::forward<Args>( args )... };
+      }
+
+      inline T & object()
+      {
+        return *reinterpret_cast<T*>( this + 1 );
+      }
+
+      inline const T & object() const
+      {
+        return *reinterpret_cast<const T*>( this + 1 );
+      }
+
+      virtual ~ObjectAdapter() { object().~T(); } 
+
+      virtual size_t size() const override { return sizeof(T); }
+      virtual bool empty() const override { return false; }
+      virtual const std::type_info & type() const override { return typeid(T); }
+    };
+
+    static_assert( sizeof( ObjectAdapter<int> ) == sizeof( ObjectInterface ), "Size computation error" );
+
+    /// Access buffer as object interface.
+    ///
+    inline ObjectInterface & object() { return *reinterpret_cast<ObjectInterface *>( data() ); }
+
+    /// Access buffer as object interface.
+    ///
+    inline const ObjectInterface & object() const { return *reinterpret_cast<const ObjectInterface *>( data() ); }
+
+    const size_t bytes;
+  };
 }

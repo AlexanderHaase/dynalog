@@ -1,6 +1,5 @@
 #pragma once
 #include <dynalog/include/ObjectBuffer.h>
-#include <dynalog/include/MessageBuffer.h>
 #include <dynalog/include/util.h>
 #include <typeindex>
 #include <ostream>
@@ -172,9 +171,8 @@ namespace dynalog {
 			const size_t required = sizeof( Class );
 			if( buffer == nullptr || buffer->capacity() < required )
 			{
-        buffer = MessageBuffer::create( required );
-  		  //buffer.resize( required );
-				//buffer.resize( cached( required ) );
+        buffer = ObjectBuffer::create( required );
+        //buffer = cached( required );
 			}
 			buffer->emplace< Body<Args...> >( std::forward<Args>( args )... );
 		}
@@ -203,9 +201,9 @@ namespace dynalog {
 	protected:
 		/// Return a cached buffer for the size, if available.
 		///
-		static Buffer::Pointer cached( size_t size );
+		/*static Buffer::Pointer cached( size_t size );*/
 
-		MessageBuffer::Pointer buffer;	///< Storage for message contents.
+		ObjectBuffer::Pointer buffer;	///< Storage for message contents.
 	};
 
 

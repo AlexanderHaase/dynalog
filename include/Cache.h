@@ -3,7 +3,6 @@
 #include <mutex>
 #include <vector>
 #include <dynalog/include/util.h>
-#include <dynalog/include/Buffer.h>
 
 namespace dynalog {
 

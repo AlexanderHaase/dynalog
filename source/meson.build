@@ -3,7 +3,7 @@ library_sources = files(
 	'Log.cpp',
 	'Configuration.cpp',
 	'HandleEmitter.cpp',
-	'Cache.cpp',
+#	'Cache.cpp',
 	'Timestamp.cpp',
 	'async/Emitter.cpp',
 	'async/Flush.cpp' )
