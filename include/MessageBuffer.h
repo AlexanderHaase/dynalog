@@ -24,7 +24,7 @@ namespace dynalog {
     ///
     /// @return type_info of contained type, or typeid(nullptr_t) if empty.
     ///
-    const std::type_info & type() const { return empty() ? typeid(nullptr_t) : as<ObjectInterface>().type(); }
+    const std::type_info & type() const { return as<ObjectInterface>().type(); }
 
     /// Query capacity of message buffer.
     ///
@@ -32,21 +32,19 @@ namespace dynalog {
 
     /// Query size of message buffer contents.
     ///
-    size_t size() const { return empty() ? 0 : as<ObjectInterface>().size(); }
+    size_t size() const { return object().size(); }
 
     /// Release/destroy message buffer contents.
     ///
     void clear()
     {
-      if( !empty() )
-      {
-        as<ObjectInterface>().~ObjectInterface();
-      }
+      object().~ObjectInterface();
+      new (data()) EmptyObject{};
     }
 
     /// Query if message buffer is empty.
     ///
-    bool empty() const { return object == nullptr; }
+    bool empty() const { return object().empty(); }
 
     /// Create a new object in the message buffer, deleting the prior(if any).
     ///
@@ -58,11 +56,11 @@ namespace dynalog {
     template < typename T, typename ...Args >
     bool emplace( Args && ...args )
     {
-      const bool result = sizeof(ObjectAdapter<T>) <= capacity();
+      const bool result = (sizeof(ObjectAdapter<T>) + sizeof(T)) <= bytes;
       if( result )
       {
-        clear();
-        object = new (data()) ObjectAdapter<T>{ std::forward<Args>( args )... };
+        object().~ObjectInterface();
+        new (data()) ObjectAdapter<T>{ std::forward<Args>( args )... };
       }
       return result;
     }
@@ -71,10 +69,10 @@ namespace dynalog {
     ///
     ~MessageBuffer()
     {
-      clear();
+      object().~ObjectInterface();
     }
 
-    /*/// Access contained object by cast.
+    /// Access contained object by cast.
     ///
     /// @tparm T Type of inner object--unchecked!
     ///
@@ -92,19 +90,7 @@ namespace dynalog {
     inline const T & as() const
     {
       return reinterpret_cast<const ObjectAdapter<T>*>( data() )->object();
-    }*/
-
-    /// Access contained object by cast.
-    ///
-    /// @tparm T Type of inner object--unchecked!
-    ///
-    template < typename T >
-    inline T & as() const
-    {
-      return static_cast<ObjectAdapter<T>*>( object )->object();
     }
-
-    
 
     /// Create a new buffer with the requested capacity.
     ///
@@ -131,9 +117,10 @@ namespace dynalog {
     /// Only use with placement new!
     ///
     MessageBuffer( size_t size )
-    : object( nullptr )
-    , bytes( size )
-    {}
+    : bytes( size )
+    {
+      new (data()) EmptyObject{};
+    }
 
     /// Access raw buffer.
     ///
@@ -150,7 +137,20 @@ namespace dynalog {
     {
       virtual ~ObjectInterface() = default;
       virtual size_t size() const  = 0;
+      virtual bool empty() const = 0;
       virtual const std::type_info & type() const = 0;
+    };
+
+    /// Empty object type.
+    ///
+    /// Constructed when no other object in place, buffer is always non-empty.
+    ///
+    struct EmptyObject
+    {
+      virtual ~EmptyObject() = default;
+      virtual size_t size() const { return 0; }
+      virtual bool empty() const { return true; }
+      virtual const std::type_info & type() const { return typeid(std::nullptr_t); }
     };
 
     /// Adapts arbitrary types to the object interface.
@@ -179,12 +179,20 @@ namespace dynalog {
       virtual ~ObjectAdapter() { object().~T(); } 
 
       virtual size_t size() const override { return sizeof(T); }
+      virtual bool empty() const override { return false; }
       virtual const std::type_info & type() const override { return typeid(T); }
     };
 
     static_assert( sizeof( ObjectAdapter<int> ) == sizeof( ObjectInterface ), "Size computation error" );
 
-    ObjectInterface * object;
+    /// Access buffer as object interface.
+    ///
+    inline ObjectInterface & object() { return *reinterpret_cast<ObjectInterface *>( data() ); }
+
+    /// Access buffer as object interface.
+    ///
+    inline const ObjectInterface & object() const { return *reinterpret_cast<const ObjectInterface *>( data() ); }
+
     const size_t bytes;
   };
 }
