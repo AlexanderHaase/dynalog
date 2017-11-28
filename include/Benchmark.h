@@ -3,7 +3,7 @@
 #include <dynalog/include/util.h>
 #include <chrono>
 #include <map>
-#include <cmath> // fort sqrt
+#include <cmath> // for sqrt
 #include <iostream>
 #include <iomanip>
 
