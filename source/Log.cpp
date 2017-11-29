@@ -10,7 +10,7 @@ namespace dynalog {
 	struct BootstrapEmitter : Emitter
 	{
 		virtual ~BootstrapEmitter() {}
-		virtual void emit( const Logger & logger, Message && message )
+		virtual void emit( const Logger & logger, const Message & message ) override
 		{
 			// Safely wrap embedded logger in shared_ptr with no-op deleter
 			//
@@ -42,7 +42,7 @@ namespace dynalog {
 			auto emitter = logger.emitter.load( std::memory_order_relaxed );
 			if( emitter )
 			{
-				emitter->emit( logger, std::move( message ) );
+				emitter->emit( logger, message );
 			}
 		}
 	};

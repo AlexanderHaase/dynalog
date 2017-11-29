@@ -26,7 +26,7 @@ namespace dynalog { namespace async {
 		/// @param logger Logger submitting the message.
 		/// @param message Message to Enqueue for defered processing.
 		///
-		void insert( Emitter * emitter, const Logger & logger, Message && message );
+		void insert( Emitter * emitter, const Logger & logger, const Message & message );
 
 		/// Query the number of workers required to process messages.
 		///
@@ -122,7 +122,7 @@ namespace dynalog { namespace async {
 	class DeferredEmitter : public Emitter {
 	public:
 		virtual ~DeferredEmitter();
-		virtual void emit( const Logger & logger, Message && message );
+		virtual void emit( const Logger & logger, const Message & message ) override;
 
 		DeferredEmitter( const std::shared_ptr<Dispatcher> & dispatcher, Emitter * emitter );
 	protected:

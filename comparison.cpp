@@ -21,10 +21,9 @@ struct Callable
 	}
 } callable;
 
-struct NoOpEmitter : public dynalog::Emitter
-{
-	virtual ~NoOpEmitter(){}
-	virtual void emit( const dynalog::Logger &, dynalog::Message && ) {}
+struct NoOpEmitter : dynalog::Emitter {
+  virtual ~NoOpEmitter() = default;
+	virtual void emit( const dynalog::Logger &, const dynalog::Message & ) override {}
 };
 
 int main( int argc, const char ** argv )
@@ -79,17 +78,21 @@ int main( int argc, const char ** argv )
 	benchmark.measure( "DynaLog(<disabled>)", callable );
 	
 	auto dispatcher = std::make_shared<dynalog::async::Dispatcher>( std::chrono::milliseconds( 1 ), 
-		std::chrono::seconds(10), 512, 4 );
+		std::chrono::seconds(10), 512, 2 );
 	dispatcher->run();
 	auto deferredEmitter = std::make_shared<dynalog::async::DeferredEmitter>( dispatcher, emitter.get() );
-
 	dynalog::global::setDefault( deferredEmitter.get() );
-	benchmark.measure( "DynaLog(<async>'/dev/null')", callable, [&dispatcher]
+
+  const auto sync = [&dispatcher]
 	{
 		dynalog::async::Flush flush;
 		dispatcher->flush( flush );
 		flush.wait();
-	});
+	};
+
+  sync();
+
+	benchmark.measure( "DynaLog(<async>'/dev/null')", callable, sync );
 
 	benchmark.summary(std::cout);
 

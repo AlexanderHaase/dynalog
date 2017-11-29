@@ -15,35 +15,35 @@ namespace dynalog {
 	Emitter * const HandleEmitter::stdout = &stdoutEmitter;
 	Emitter * const HandleEmitter::stderr = &stderrEmitter;
 
-  /// Buffer
+	/// Buffer
 	template <typename CharT, size_t Capacity, typename Traits = std::char_traits<CharT> >
 	class array_ostream : public std::basic_ostream<CharT,Traits> {
 	 public:
-    using super = std::basic_ostream<CharT,Traits>;
+		using super = std::basic_ostream<CharT,Traits>;
 
-    void setfd( int fd )
-    {
-      streambuf.consumer().handle() = fd;
-    }
+		void setfd( int fd )
+		{
+			streambuf.consumer().handle() = fd;
+		}
 
-    bool flush()
-    {
-      return streambuf.flush();
-    }
+		bool flush()
+		{
+			return streambuf.flush();
+		}
 
-    void clear()
-    {
-      streambuf.clear();
-    }
+		void clear()
+		{
+			streambuf.clear();
+		}
 
-    array_ostream()
+		array_ostream()
 		: super( &streambuf )
 		{
-      streambuf.set_buffer( buffer.begin(), buffer.size() );
-    }
+			streambuf.set_buffer( buffer.begin(), buffer.size() );
+		}
 
-   protected:
-    proxy_ostreambuf<CharT, WriteHandle<CharT> > streambuf;
+	 protected:
+		proxy_ostreambuf<CharT, WriteHandle<CharT> > streambuf;
 		std::array<CharT,Capacity> buffer;
 	};
 
@@ -58,7 +58,7 @@ namespace dynalog {
 	/// @param logger Source of the message.
 	/// @param message Formatted message body to process.
 	///
-	void HandleEmitter::emit( const Logger &, Message && message )
+	void HandleEmitter::emit( const Logger &, const Message & message )
 	{
 		// Use stacked buffer to stream data -- more than 3x faster than stringstream.
 		// TODO: Overflow behavior, sync behavior
@@ -66,7 +66,7 @@ namespace dynalog {
 		//auto result = streams.with( [&]( ArrayStream<char,4096> & stream )
 		//{
 			stream.clear();
-      stream.setfd( fd );
+			stream.setfd( fd );
 			stream << message << "\n"; //std::endl;
 			auto result = stream.flush();
 			//return stream.streambuf.write( fd );
