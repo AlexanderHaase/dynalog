@@ -17,7 +17,7 @@ namespace dynalog {
    public:
     using clock = std::chrono::steady_clock;
     using microseconds_double = std::chrono::duration<double, std::micro>;
-    struct Sampler;
+    class Sampler;
 
     Benchmark()
     {

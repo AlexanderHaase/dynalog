@@ -27,8 +27,8 @@ namespace dynalog { namespace async {
 		std::condition_variable condition;
 	};
 
-	Flush::Token::Token( const std::shared_ptr<FlushImpl> & impl )
-	: flush( impl )
+	Flush::Token::Token( const std::shared_ptr<FlushImpl> & impl_arg )
+	: flush( impl_arg )
 	{
 		flush->pend();
 	}

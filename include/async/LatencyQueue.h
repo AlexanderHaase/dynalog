@@ -212,7 +212,7 @@ namespace dynalog { namespace async {
 			size_t scale = 1,
 			size_t nReadersPerDepo = 1,
 			size_t nDepos = 1 )
-		: latency( abs_latency * readersPerDepo )
+		: latency( abs_latency * nReadersPerDepo )
 		, caches( std::make_tuple( capacity ) )
 		, depos( nDepos, std::make_tuple( abs_latency,
 			capacity, 
@@ -279,7 +279,7 @@ namespace dynalog { namespace async {
 
 		struct Depo
 		{
-			Depo( const typename Clock::duration & latency, size_t capacity, size_t n_readers, size_t n_waiters, size_t scale = 1 )
+			Depo( const typename Clock::duration & latency_arg, size_t capacity, size_t n_readers, size_t n_waiters, size_t scale = 1 )
 			: ready( n_waiters * scale )
 			, spare( n_waiters * scale )
 			, waiting( n_waiters * scale )
@@ -294,7 +294,7 @@ namespace dynalog { namespace async {
 				readers.reserve( n_readers );
 				for( size_t index = 0; index < n_readers; ++index )
 				{
-					readers.emplace_back( now + latency * index, capacity );
+					readers.emplace_back( now + latency_arg * index, capacity );
 				}
 			}
 

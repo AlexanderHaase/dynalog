@@ -88,7 +88,8 @@ namespace dynalog {
 			/// @param Index specifier for deduction.
 			///
 			template< typename Func, size_t Index, size_t ...Remainder >
-			void apply( Func && func, IndexSequence<Index, Remainder...> ) const
+			auto apply( Func && func, IndexSequence<Index, Remainder...> ) const
+        -> typename std::enable_if<(sizeof...(Remainder) > 0 ),void>::type
 			{
 				func( Index, std::get<Index>( elements ) );
 				apply( std::forward<Func>( func ), IndexSequence<Remainder...>{} );

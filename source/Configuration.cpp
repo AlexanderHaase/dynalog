@@ -192,29 +192,29 @@ namespace dynalog {
 
 	/// Accept loggers matched by this node, eliminating them from the offering.
 	///
-	void Configuration::Node::adopt( LoggerSet & set, LoggerVector & scratch )
+	void Configuration::Node::adopt( LoggerSet & set, LoggerVector & scratch_space )
 	{
-		policy->match( set, scratch );
-		changes.update( ChangeSet::Insert{}, scratch );
-		for( auto && logger : scratch )
+		policy->match( set, scratch_space );
+		changes.update( ChangeSet::Insert{}, scratch_space );
+		for( auto && logger : scratch_space )
 		{
 			set.erase( logger );
 		}
-		scratch.clear();
+		scratch_space.clear();
 	}
 
 	/// Have the policy rescan it's own managed state.
 	///
-	void Configuration::Node::rescan( LoggerVector & scratch )
+	void Configuration::Node::rescan( LoggerVector & scratch_space )
 	{
-		policy->match( changes.manage, scratch );
+		policy->match( changes.manage, scratch_space );
 		std::swap( changes.manage, changes.remove );
-		for( auto && logger : scratch )
+		for( auto && logger : scratch_space )
 		{
 			changes.manage.insert( logger );
 			changes.remove.erase( logger );
 		}
-		scratch.clear();
+		scratch_space.clear();
 	}
 
 	/// Update the policy and collapse changes
@@ -230,11 +230,11 @@ namespace dynalog {
 
 	/// Steal matched loggers form the other node
 	///
-	void Configuration::Node::assume( Node & other, LoggerVector & scratch )
+	void Configuration::Node::assume( Node & other, LoggerVector & scratch_space )
 	{
-		policy->match( other.changes.manage, scratch );
-		changes.update( ChangeSet::Insert{}, scratch );
-		other.changes.update( ChangeSet::Remove{}, scratch );
-		scratch.clear();
+		policy->match( other.changes.manage, scratch_space );
+		changes.update( ChangeSet::Insert{}, scratch_space );
+		other.changes.update( ChangeSet::Remove{}, scratch_space );
+		scratch_space.clear();
 	}
 }

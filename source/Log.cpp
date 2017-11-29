@@ -88,7 +88,7 @@ namespace dynalog {
 
 ::std::ostream & operator << ( ::std::ostream & stream, ::dynalog::Level level )
 {
-	static const std::array<const char *, 5> names{ "CRITICAL", "ERROR", "WARNING", "INFO", "VERBOSE" };
+	static const std::array<const char *, 5> names{ { "CRITICAL", "ERROR", "WARNING", "INFO", "VERBOSE" } };
 	const size_t index = static_cast<size_t>( level );
 	return index < names.size() ? stream << names[ index ] : stream << "<invalid ::dynalog::Level(" << index << ")>";
 }

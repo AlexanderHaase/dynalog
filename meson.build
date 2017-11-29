@@ -10,16 +10,43 @@ cpp_flags = [ '-std=c++11',
 	'-Wextra',
 	'-Werror',
 	'--pedantic',
-	'-Wlogical-op',
-	'-Wuseless-cast',
 	'-Wdouble-promotion',
 	'-Wshadow',
 	'-Wformat=2',
-	#gcc 6 '-Wnull-dereference',
-	#gcc 6 '-Wduplicated-cond',
-	#gcc 7 '-Wduplicated-branches',
-	#gcc 7 '-Wrestrict',
-	'-O3' ]
+  #'-flto', # Doesn't play well with clang
+	'-Ofast'
+  ]
+
+cpp_lint_flags = [
+	'-Wlogical-op',
+	'-Wdouble-promotion',
+	'-Wnull-dereference',
+	'-Wduplicated-cond',
+	'-Wduplicated-branches',
+	'-Wrestrict'
+  ]
+
+cpp_other_flags = [
+	'-Wuseless-cast'
+  ]
+
+cpp_compiler = meson.get_compiler('cpp')
+
+foreach flag : cpp_lint_flags
+  if cpp_compiler.has_argument( flag, name : flag )
+    cpp_flags += [ flag ]
+  endif
+endforeach
+
+foreach flag : cpp_other_flags
+  if cpp_compiler.compiles(
+    'struct Base { Base( int const & arg ); int value; }; struct Derived : Base { using Base::Base; }; static Derived test{0}; Base::Base( int const & arg ) : value( arg ) {} int main() { return 0; }',
+      args : cpp_flags + [ flag ],
+      name : flag )
+    cpp_flags += [ flag ]
+  endif
+endforeach
+
 
 base_includes = include_directories( '../' ) 
 

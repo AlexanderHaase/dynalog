@@ -3,6 +3,7 @@
 #include <sstream>
 #include <dynalog/include/HandleEmitter.h>
 #include <dynalog/include/async/Replicated.h>
+#include <dynalog/include/ProxyOstreambuf.h>
 #include <streambuf>
 #include <ostream>
 
@@ -14,74 +15,43 @@ namespace dynalog {
 	Emitter * const HandleEmitter::stdout = &stdoutEmitter;
 	Emitter * const HandleEmitter::stderr = &stderrEmitter;
 
-	/// Still a bit of a hack...should really just make an array wrapper
-	/// that properly implements streambuf ops.
-	///
-	template < typename char_type >
-	struct streambuf_wrapper : public std::streambuf
-	{
-		streambuf_wrapper( void * buffer, size_t size )
+  /// Buffer
+	template <typename CharT, size_t Capacity, typename Traits = std::char_traits<CharT> >
+	class array_ostream : public std::basic_ostream<CharT,Traits> {
+	 public:
+    using super = std::basic_ostream<CharT,Traits>;
+
+    void setfd( int fd )
+    {
+      streambuf.consumer().handle() = fd;
+    }
+
+    bool flush()
+    {
+      return streambuf.flush();
+    }
+
+    void clear()
+    {
+      streambuf.clear();
+    }
+
+    array_ostream()
+		: super( &streambuf )
 		{
-			char_type * base = static_cast<char_type*>( buffer );
-			setp( base, base + (size / sizeof(char_type)) );
-		}
+      streambuf.set_buffer( buffer.begin(), buffer.size() );
+    }
 
-		std::tuple<char_type*,size_t> formatted() const
-		{
-			auto begin = pbase();
-			auto end = pptr();
-			return std::make_tuple( begin, end - begin );
-		}
-
-		bool write( int fd ) const
-		{
-			const auto area = formatted();
-			return ssize_t(std::get<1>( area )) == ::write( fd, std::get<0>( area ), std::get<1>( area ) );
-		}
-
-		void reset( void )
-		{
-			setp( pbase(), epptr() );
-		}
-
-		/* This is slower than writing above??
-		int fd;
-		virtual int sync()
-		{
-			const auto area = formatted();
-			const bool result = ssize_t(std::get<1>( area )) == ::write( fd, std::get<0>( area ), std::get<1>( area ) );
-			if( result )
-			{
-				setp( pbase(), epptr() );
-			}
-			return result ? 0 : -1;
-		}
-
-		virtual typename traits::int_type overflow( int ch )
-		{
-			return sync() == 0 ? base::sputc( ch ) : traits::eof();
-		}
-		*/
-	};
-
-	template <typename Char, size_t size, typename Traits = std::char_traits<Char> >
-	struct ArrayStream
-	{
-		std::array<Char,size> buffer;
-		streambuf_wrapper<Char> streambuf;
-		std::ostream stream;
-
-		ArrayStream()
-		: streambuf( buffer.begin(), buffer.size() )
-		, stream( &streambuf )
-		{}
+   protected:
+    proxy_ostreambuf<CharT, WriteHandle<CharT> > streambuf;
+		std::array<CharT,Capacity> buffer;
 	};
 
 	/// Thread-safe buffer for emitters
 	///
-	static async::Replicated<ArrayStream<char,4096> > streams( std::tuple<>{} );
+	static async::Replicated<array_ostream<char,4096> > streams( std::tuple<>{} );
 
-	static thread_local ArrayStream<char,4096> stream;
+	static thread_local array_ostream<char,4096> stream;
 
 	/// Receive a message.
 	///
@@ -95,9 +65,10 @@ namespace dynalog {
 		//
 		//auto result = streams.with( [&]( ArrayStream<char,4096> & stream )
 		//{
-			stream.streambuf.reset();
-			stream.stream << message << std::endl;
-			auto result = stream.streambuf.write( fd );
+			stream.clear();
+      stream.setfd( fd );
+			stream << message << "\n"; //std::endl;
+			auto result = stream.flush();
 			//return stream.streambuf.write( fd );
 		//});
 

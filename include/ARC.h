@@ -56,7 +56,7 @@ namespace dynalog {
       }
       
      protected:
-      std::atomic<size_t> references{{0}};
+      std::atomic<size_t> references{ 0 };
     };
 
     /// Pointer for arc semantics.
