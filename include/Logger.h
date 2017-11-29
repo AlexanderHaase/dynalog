@@ -28,7 +28,7 @@ namespace dynalog {
 		/// @param logger Source of the message.
 		/// @param message Formatted message body to process.
 		///
-		virtual void emit( const Logger & logger, const Message & message ) = 0;
+		virtual void emit( const Logger & logger, Message && message ) = 0;
 	};
 
 	/// Loggers describe logging rules for a specific location.
@@ -72,7 +72,7 @@ namespace dynalog {
 			{
 				Message message;
 				builder( message );
-				destination->emit( *this, message );
+				destination->emit( *this, std::move( message ) );
 			}
 		}
 	};

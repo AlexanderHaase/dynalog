@@ -58,7 +58,7 @@ namespace dynalog {
 	/// @param logger Source of the message.
 	/// @param message Formatted message body to process.
 	///
-	void HandleEmitter::emit( const Logger &, const Message & message )
+	void HandleEmitter::emit( const Logger &, Message && message )
 	{
 		// Use stacked buffer to stream data -- more than 3x faster than stringstream.
 		// TODO: Overflow behavior, sync behavior

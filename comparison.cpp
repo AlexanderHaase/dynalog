@@ -23,7 +23,7 @@ struct Callable
 
 struct NoOpEmitter : dynalog::Emitter {
   virtual ~NoOpEmitter() = default;
-	virtual void emit( const dynalog::Logger &, const dynalog::Message & ) override {}
+	virtual void emit( const dynalog::Logger &, dynalog::Message && ) override {}
 };
 
 int main( int argc, const char ** argv )

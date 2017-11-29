@@ -19,7 +19,7 @@ namespace dynalog {
 		/// @param logger Source of the message.
 		/// @param message Formatted message body to process.
 		///
-		virtual void emit( const Logger & logger, const Message & message ) override;
+		virtual void emit( const Logger & logger, Message && message ) override;
 
 		/// Create a new emitter.
 		///

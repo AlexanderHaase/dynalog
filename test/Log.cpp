@@ -27,7 +27,7 @@ SCENARIO( "bootstrap logger should prevent logging if level is in message body" 
     struct TestEmitter : dynalog::Emitter
     {
       size_t count = 0;
-      virtual void emit( const dynalog::Logger &, const dynalog::Message & ) override
+      virtual void emit( const dynalog::Logger &, dynalog::Message && ) override
       {
         count += 1;
       }

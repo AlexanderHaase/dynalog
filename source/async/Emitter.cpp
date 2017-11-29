@@ -4,9 +4,9 @@
 
 namespace dynalog { namespace async {
 
-	void Dispatcher::insert( Emitter * emitter, const Logger & logger, const Message & message )
+	void Dispatcher::insert( Emitter * emitter, const Logger & logger, Message && message )
 	{
-		const auto success = queue.insert( Action{ emitter, logger, message }, timeout );
+		const auto success = queue.insert( Action{ emitter, logger, std::move( message ) }, timeout );
 		if( ! success )
 		{
 			// Last-resort warning
@@ -17,7 +17,7 @@ namespace dynalog { namespace async {
 
 	struct NoOpEmitter : Emitter {
     virtual ~NoOpEmitter() = default;
-		virtual void emit( const Logger &, const Message & ) override {}
+		virtual void emit( const Logger &, Message && ) override {}
 	};
 
 	static NoOpEmitter flushEmitter;
@@ -38,7 +38,7 @@ namespace dynalog { namespace async {
 	{
 		queue.remove( index,
 			[]{ return true; },
-			[]( Action && action ){ action.emitter->emit( action.logger, action.message ); });
+			[]( Action && action ){ action.emitter->emit( action.logger, std::move( action.message ) ); });
 	}
 
 	void Dispatcher::run( void )
@@ -79,9 +79,9 @@ namespace dynalog { namespace async {
 	, timeout( timeout_arg )
 	{}
 
-	void DeferredEmitter::emit( const Logger & logger, const Message & message )
+	void DeferredEmitter::emit( const Logger & logger, Message && message )
 	{
-		dispatcher->insert( emitter, logger, message );
+		dispatcher->insert( emitter, logger, std::move( message ) );
 	}
 
 	DeferredEmitter::DeferredEmitter( const std::shared_ptr<Dispatcher> & dispatcher_arg, Emitter * emitter_arg )
