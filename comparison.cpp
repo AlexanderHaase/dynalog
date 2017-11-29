@@ -29,13 +29,13 @@ struct NoOpEmitter : public dynalog::Emitter
 
 int main( int argc, const char ** argv )
 {
-  dynalog::Benchmark benchmark;
+	dynalog::Benchmark benchmark;
 
 	DYNALOG_TAG( "<ExampleTag>", dynalog::Level::VERBOSE, "Performance comparison of formatting output(relative to slowest):" );
 	//Benchmark benchmark;
 
-	int devnull =  open( "/dev/null", O_WRONLY );
-  benchmark.measure( "dprintf('/dev/null')", [devnull]() { dprintf( devnull, "%s%s%s\n", "MAIN", "VERBOSE", "inside callable" ); } );
+	int devnull =	open( "/dev/null", O_WRONLY );
+	benchmark.measure( "dprintf('/dev/null')", [devnull]() { dprintf( devnull, "%s%s%s\n", "MAIN", "VERBOSE", "inside callable" ); } );
 
 	benchmark.measure( "snprintf(<internal buffer>)", []()
 	{
@@ -91,13 +91,13 @@ int main( int argc, const char ** argv )
 		flush.wait();
 	});
 
-  benchmark.summary(std::cout);
+	benchmark.summary(std::cout);
 
-  if( argc > 1 )
-  {
-    std::ofstream file{ argv[ 1 ] };
-    benchmark.json( file );
-  } 
+	if( argc > 1 )
+	{
+		std::ofstream file{ argv[ 1 ] };
+		benchmark.json( file );
+	} 
 	//benchmark.log(std::cout);
 
 	/*dynalog::visit( dynalog::global::configuration, []( const std::shared_ptr<dynalog::Logger> & logger )

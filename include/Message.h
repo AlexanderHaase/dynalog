@@ -36,15 +36,15 @@ namespace dynalog {
 				}
 
 				template < typename Type >
-        bool is() const { return info && typeid(typename std::decay<Type>::type) == *info; }
+				bool is() const { return info && typeid(typename std::decay<Type>::type) == *info; }
 
 				template < typename Type >
-        auto as() const
-          -> typename std::add_lvalue_reference<typename std::add_const<Type>::type>::type
-        {
-          using CastType = typename std::add_pointer<typename std::add_const<Type>::type>::type;
-          return *reinterpret_cast<CastType>( object );
-        }
+				auto as() const
+					-> typename std::add_lvalue_reference<typename std::add_const<Type>::type>::type
+				{
+					using CastType = typename std::add_pointer<typename std::add_const<Type>::type>::type;
+					return *reinterpret_cast<CastType>( object );
+				}
 			};
 
 			virtual ~Content( void ) {}
@@ -89,7 +89,7 @@ namespace dynalog {
 			///
 			template< typename Func, size_t Index, size_t ...Remainder >
 			auto apply( Func && func, IndexSequence<Index, Remainder...> ) const
-        -> typename std::enable_if<(sizeof...(Remainder) > 0 ),void>::type
+				-> typename std::enable_if<(sizeof...(Remainder) > 0 ),void>::type
 			{
 				func( Index, std::get<Index>( elements ) );
 				apply( std::forward<Func>( func ), IndexSequence<Remainder...>{} );
@@ -172,8 +172,8 @@ namespace dynalog {
 			const size_t required = sizeof( Class );
 			if( buffer == nullptr || buffer->capacity() < required )
 			{
-        buffer = ObjectBuffer::create( required );
-        //buffer = cached( required );
+				buffer = ObjectBuffer::create( required );
+				//buffer = cached( required );
 			}
 			buffer->emplace< Body<Args...> >( std::forward<Args>( args )... );
 		}
