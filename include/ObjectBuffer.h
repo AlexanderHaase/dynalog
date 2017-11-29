@@ -7,7 +7,12 @@ namespace dynalog {
   /// Buffer/erasure for Message contents.
   ///
   /// Provides buffer/erasure semantics, attempting to reduce copy/move size to
-  /// a single pointer.
+  /// a single pointer. The buffer always stores an object internally for three
+  /// reasons: First, no need to store buffer state, removing all variables but
+  /// capacity. Second, it removes conditionals from methods: rather than
+  /// checking if the buffer is empty, it unconditinally proxies the method to
+  /// the object, similar to the impl pattern. Third, the combined changes
+  /// produce a ~33% speedup over the previous implementation.
   ///
   /// Utilizes arc anticipating multiple message consumers.
   ///
