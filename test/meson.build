@@ -3,7 +3,8 @@ test_sources = files( 'main.cpp',
 	'Message.cpp',
 	'Timestamp.cpp',
 	'RingBuffer.cpp',
-  'Log.cpp' )
+  'Log.cpp',
+  'Erasure.cpp' )
 
 test_exe = executable( 'all_tests', test_sources,
 	include_directories : [ base_includes, test_includes ],

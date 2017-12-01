@@ -32,40 +32,8 @@ namespace dynalog {
 		struct Body : public Content, public Inspector
     {  
 			const std::tuple<Args...> elements;
-			using AllIndexes = typename GenerateIndexSequence<sizeof...(Args)>::type;
 
       virtual const Inspector & inspect() const { return *this; }
-
-			/// Apply a functor to the specified tuple indices.
-			///
-			/// In c++17, a fold expression would be equally viable...
-			///
-			/// @tparam Func to apply to tuple elements(template/specialize/overload as needed)
-			/// @tparam Index to process at this step.
-			/// @tparam ...Remainder indicies yet to process
-			/// @param func Functor to apply.
-			/// @param Index specifier for deduction.
-			///
-			template< typename Func, size_t Index, size_t ...Remainder >
-			auto apply( Func && func, IndexSequence<Index, Remainder...> ) const
-				-> typename std::enable_if<(sizeof...(Remainder) > 0 ),void>::type
-			{
-				func( Index, std::get<Index>( elements ) );
-				apply( std::forward<Func>( func ), IndexSequence<Remainder...>{} );
-			}
-
-			/// Apply a functor to the specified tuple index.
-			///
-			/// @tparam Func to apply to tuple elements(template/specialize/overload as needed)
-			/// @tparam Index to process at this step.
-			/// @param func Functor to apply.
-			/// @param Index specifier for deduction.
-			///
-			template< typename Func, size_t Index >
-			void apply( Func && func, IndexSequence<Index> ) const
-			{
-				func( Index, std::get<Index>( elements ) );
-			}
 
 			/// Apply a stream operator to each passed object.
 			///
@@ -74,7 +42,7 @@ namespace dynalog {
 				std::ostream & stream;
 
 				template <typename Type>
-				void operator() ( size_t, Type && type ) { stream << type; }
+				void operator() ( Type && type ) { stream << type; }
 			};
 
 			/// Create and populate the closure.
@@ -88,8 +56,8 @@ namespace dynalog {
 			/// Wrapper to serialize contents.
 			///
 			virtual void serialize( std::ostream & stream ) const
-			{				
-				apply( Streamer{ stream }, AllIndexes{} );
+			{
+        visit_tuple( Streamer{ stream }, elements );
 			}
 
 			/// Wrapper to return tuple size.
@@ -104,7 +72,7 @@ namespace dynalog {
 				Reflection reflection;
 				
 				template <typename Type>
-				void operator() ( const size_t index, Type && type )
+				void operator() ( Type && type, const size_t index )
 				{
 					if( index == target )
 					{
@@ -118,7 +86,7 @@ namespace dynalog {
 			virtual Reflection reflect( size_t index ) const
 			{
 				Reflector reflector{ index, Reflection{} };
-				apply( reflector, AllIndexes{} );
+        visit_tuple( reflector, elements );
 				return reflector.reflection;
 			}
 		};

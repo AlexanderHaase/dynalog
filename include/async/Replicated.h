@@ -135,7 +135,7 @@ namespace dynalog { namespace async {
 		/// 
 		template < typename ... Args >
 		Replicated( const size_t size, const std::tuple<Args...> & args )
-		: Replicated( size, [&args]( size_t ){ return apply_tuple( args, make_instance{} ); } )
+		: Replicated( size, [&args]( size_t ){ return apply_tuple( make_instance{}, args ); } )
 		{}
 
 		/// Create the replicated object set with a tuple of constructor arguments.
