@@ -19,10 +19,11 @@ namespace dynalog {
 
       // Try to re-check level using reflection
       //
-      const auto limit = message.content().size();
+      const auto & inspector = message.content().inspect();
+      const auto limit = inspector.size();
       for( size_t index = 0; index < limit; ++index )
       {
-        const auto reflection = message.content().reflect( index );
+        const auto reflection = inspector.reflect( index );
         if( !reflection.is<Level>() )
         {
           continue;

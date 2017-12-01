@@ -1,7 +1,6 @@
 #pragma once
 #include <dynalog/include/ObjectBuffer.h>
-#include <dynalog/include/util.h>
-#include <typeindex>
+#include <dynalog/include/Reflection.h>
 #include <ostream>
 
 namespace dynalog {
@@ -14,39 +13,6 @@ namespace dynalog {
 		///
 		struct Content
 		{
-			/// First-draft reflection.
-			///
-			/// TODO: modifier detection, special case pointer, references, etc.
-			///
-			struct Reflection
-			{
-				const std::type_info * info = nullptr;
-				const void * object = nullptr;
-				/*
-				bool cv = false;
-				bool ptr = false;
-				bool ref = false;
-				*/
-
-				template < typename Type >
-				void reflect( Type && type )
-				{
-					info = &typeid( typename std::decay<Type>::type );
-					object = &type;
-				}
-
-				template < typename Type >
-				bool is() const { return info && typeid(typename std::decay<Type>::type) == *info; }
-
-				template < typename Type >
-				auto as() const
-					-> typename std::add_lvalue_reference<typename std::add_const<Type>::type>::type
-				{
-					using CastType = typename std::add_pointer<typename std::add_const<Type>::type>::type;
-					return *reinterpret_cast<CastType>( object );
-				}
-			};
-
 			virtual ~Content( void ) {}
 
 			/// Write the enclosed contents to the provided stream
@@ -55,27 +21,20 @@ namespace dynalog {
 			///
 			virtual void serialize( std::ostream & ostream ) const = 0;
 
-			/// Probe the number of elements in the closure.
-			///
-			/// @return number of elements in closure.
-			///
-			virtual size_t size( void ) const = 0;
-
-			/// Get the reflection for the element at index.
-			///
-			/// @param index Element to reflect.
-			/// @return Reflection data for element.
-			///
-			virtual Reflection reflect( size_t index ) const = 0;
+      /// Inspect/reflect message contents.
+      ///
+      virtual const Inspector & inspect() const = 0;
 		};
 
 		/// Implementation that copies and outputs streamable objects.
 		///
 		template < typename ... Args >
-		struct Body : Content
-		{
+		struct Body : public Content, public Inspector
+    {  
 			const std::tuple<Args...> elements;
 			using AllIndexes = typename GenerateIndexSequence<sizeof...(Args)>::type;
+
+      virtual const Inspector & inspect() const { return *this; }
 
 			/// Apply a functor to the specified tuple indices.
 			///
@@ -142,7 +101,7 @@ namespace dynalog {
 			struct Reflector
 			{
 				const size_t target;
-				Content::Reflection reflection;
+				Reflection reflection;
 				
 				template <typename Type>
 				void operator() ( const size_t index, Type && type )
@@ -158,7 +117,7 @@ namespace dynalog {
 			///
 			virtual Reflection reflect( size_t index ) const
 			{
-				Reflector reflector{ index, Content::Reflection{} };
+				Reflector reflector{ index, Reflection{} };
 				apply( reflector, AllIndexes{} );
 				return reflector.reflection;
 			}

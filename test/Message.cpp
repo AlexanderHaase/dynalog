@@ -20,11 +20,12 @@ SCENARIO( "messages should function as portable erasures" )
 		THEN( "messages should be reflectable" )
 		{
 			message.format( std::string( "hi" ), 2, 0.1 );
-			REQUIRE( message.content().size() == 3 );
+      const auto & inspector = message.content().inspect();
+			REQUIRE( inspector.size() == 3 );
 			
-			dynalog::Message::Content::Reflection reflection = message.content().reflect( 1 );
-			REQUIRE( reflection.info == &typeid(int) );
-			REQUIRE( *reinterpret_cast<const int*>( reflection.object ) == 2 );
+			dynalog::Reflection reflection = inspector.reflect( 1 );
+			REQUIRE( reflection.is<int>() );
+			REQUIRE( reflection.as<int>() == 2 );
 		}
 	}
 }
