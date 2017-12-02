@@ -2,10 +2,14 @@
 #include <cstddef>
 #include <memory>
 #include <dynalog/include/Reflection.h>
+#include <iostream>
 
 namespace dynalog {
 
   namespace details {
+
+    template < typename T >
+    constexpr T max( T a, T b ) { return a > b ? a : b; }
 
     /// A wrapper that may hold any other class, preserving value semantics.
     ///
@@ -265,7 +269,9 @@ namespace dynalog {
 
         virtual Reflection reflect() const override
         {
-          return Reflection{};
+          Reflection result;
+          result.reflect<nullptr_t>( nullptr );
+          return result;
         }
 
         virtual Location location() const override { return Location::Empty; }
@@ -291,7 +297,7 @@ namespace dynalog {
       void * buffer() { return this; }
       const void * buffer() const { return this; }
 
-      static constexpr size_t size = (Capacity + NullObject::size() >= ExternalObject<int>::size());// : Capacity + NullObject::size() ? ExternalObject<int>::size();
+      static constexpr size_t size = max( Capacity + NullObject::size(), ExternalObject<int>::size() );
     };
   }
 

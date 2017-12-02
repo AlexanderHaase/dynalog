@@ -16,29 +16,24 @@ SCENARIO( "erasures should capture objects" )
     const SmallType small_value = 2;
     const LargeType large_value{ { 3, 4 } };
 
-    THEN( "the test should run" )
+    THEN( "erasures should begin empty" )
     {
-			auto reflection = erasure.reflect();
-      std::cout << "I ran\n";
+			const auto reflection = erasure.reflect();
       REQUIRE( reflection.is<nullptr_t>() );
       REQUIRE( erasure.location() == Erasure::Location::Empty );
     }
-    /*
+
 		THEN( "erasure should capture the small object internally" )
 		{
-			auto reflection = erasure.reflect();
-      REQUIRE( reflection.is<nullptr_t>() );
-      REQUIRE( erasure.location() == Erasure::Location::Empty );
-
       erasure = small_value;
       REQUIRE( erasure.as<SmallType>() == small_value );
       REQUIRE( erasure.location() == Erasure::Location::Internal );
 
-      reflection = erasure.reflect();
+      const auto reflection = erasure.reflect();
       REQUIRE( reflection.is<SmallType>() );
       REQUIRE( reflection.as<SmallType>() == small_value );
-      std::cout << "I ran\n";
 		}
+
     THEN( "erasure should capture the large object externally" )
     {
       erasure = large_value;
@@ -48,7 +43,6 @@ SCENARIO( "erasures should capture objects" )
       const auto reflection = erasure.reflect();
       REQUIRE( reflection.is<LargeType>() );
       REQUIRE( reflection.as<LargeType>() == large_value );
-      std::cout << "I ran\n";
-    }*/
+    }
 	}
 }
