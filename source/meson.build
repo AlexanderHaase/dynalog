@@ -6,7 +6,8 @@ library_sources = files(
 #	'Cache.cpp',
 	'Timestamp.cpp',
 	'async/Emitter.cpp',
-	'async/Flush.cpp' )
+	'async/Flush.cpp',  
+  'Demangle.cpp' )
 
 libdynalog = shared_library( 'dynalog', library_sources, 
 	include_directories : [ base_includes ],

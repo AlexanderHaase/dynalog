@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <memory>
 #include <dynalog/include/Reflection.h>
+#include <dynalog/include/Demangle.h>
 #include <iostream>
 
 namespace dynalog {
@@ -106,35 +107,35 @@ namespace dynalog {
         virtual const void * object() const = 0;
       };
 
-      template <typename T>
+      template <typename Type>
       class InternalObject final : public ObjectInterface {
        public:
-        static constexpr size_t size() { return sizeof(InternalObject) + sizeof(T); }
+        static constexpr size_t size() { return sizeof(InternalObject) + sizeof(Type); }
 
         virtual ~InternalObject()
         {
-          as<T>().~T();
+          as<Type>().~Type();
         }
 
         template < typename ...Args >
         InternalObject( Args && ...args )
         {
-          new ( this + 1 ) T{ std::forward<Args>( args )... };
+          new ( this + 1 ) Type{ std::forward<Args>( args )... };
         }
 
         virtual void copy_to( BasicErasure & other, size_t capacity ) const override
         {
-          other.construct<T>( capacity, as<T>() );
+          other.construct<Type>( capacity, as<Type>() );
         }
 
         virtual void move_to( BasicErasure & other, size_t capacity ) override
         {
-          other.construct<T>( capacity, std::move( as<T>() ) );
+          other.construct<Type>( capacity, std::move( as<Type>() ) );
         }
 
         virtual Reflection reflect() const override
         {
-          return Reflection{ as<T>() };
+          return Reflection{ as<Type>() };
         }
 
         virtual Location location() const override { return Location::Internal; }
@@ -144,7 +145,7 @@ namespace dynalog {
         virtual const void * object() const override { return this + 1; }
       };
 
-      template <typename T>
+      template <typename Type>
       class ExternalObject final : public ObjectInterface {
        public:
         static constexpr size_t size() { return sizeof(ExternalObject); }
@@ -153,24 +154,24 @@ namespace dynalog {
 
         template < typename ...Args >
         ExternalObject( Args && ...args )
-        : pointer( new T{ std::forward<Args>( args )... } )
+        : pointer( new Type{ std::forward<Args>( args )... } )
         {}
 
         ExternalObject( ExternalObject && ) = default;
 
         virtual void copy_to( BasicErasure & other, size_t capacity ) const override
         {
-          other.construct<T>( capacity, as<T>() );
+          other.construct<Type>( capacity, as<Type>() );
         }
 
         virtual void move_to( BasicErasure & other, size_t ) override
         {
-          other.replace<ExternalObject<T>>( std::move( *this ) );
+          other.replace<ExternalObject<Type>>( std::move( *this ) );
         }
 
         virtual Reflection reflect() const override
         {
-          return Reflection{ as<T>() };
+          return Reflection{ as<Type>() };
         }
 
         virtual Location location() const override { return Location::External; }
@@ -178,7 +179,7 @@ namespace dynalog {
        protected:
         virtual void * object() override { return pointer.get(); }
         virtual const void * object() const override { return pointer.get(); }
-        std::unique_ptr<T> pointer;
+        std::unique_ptr<Type> pointer;
       };
 
       class NullObject final : public ObjectInterface {
@@ -211,13 +212,12 @@ namespace dynalog {
         virtual const void * object() const override { return nullptr; };
       };
 
-      template < typename T >
-      T & interface() { return *reinterpret_cast<T*>( buffer() ); }
+      template < typename Type >
+      Type & interface() { return *reinterpret_cast<Type*>( buffer() ); }
 
-      template < typename T >
-      const T & interface() const { return *reinterpret_cast<const T*>( buffer() ); }
+      template < typename Type >
+      const Type & interface() const { return *reinterpret_cast<const Type*>( buffer() ); }
 
-      
       /// Construct a new object in the erasure.
       ///
       /// Object is stored internally if size is permitted, externally otherwise.
@@ -226,24 +226,24 @@ namespace dynalog {
       /// @tparam Args Parameter pack of arguments for the constructor.
       /// @param args Arguments for the constructor.
       ///
-      template < typename T, typename ...Args >
+      template < typename Type, typename ...Args >
       void construct( size_t capacity, Args && ...args )
       {
-        if( InternalObject<T>::size() <= capacity )
+        if( InternalObject<Type>::size() <= capacity )
         {
-          replace<InternalObject<T>>( std::forward<Args>( args )... );
+          replace<InternalObject<Type>>( std::forward<Args>( args )... );
         }
         else
         {
-          replace<ExternalObject<T>>( std::forward<Args>( args )... );
+          replace<ExternalObject<Type>>( std::forward<Args>( args )... );
         }
       }
 
-      template < typename T, typename ...Args >
+      template < typename Type, typename ...Args >
       void replace( Args && ...args )
       {
         interface<ObjectInterface>().~ObjectInterface();
-        new ( buffer() ) T{ std::forward<Args>( args )... };
+        new ( buffer() ) Type{ std::forward<Args>( args )... };
       }
 
       void * buffer() { return this; }
@@ -255,6 +255,9 @@ namespace dynalog {
       }
     };
   }
+
+  template < typename Type >
+  struct is_erasure : std::false_type {};
 
   /// A wrapper that may hold any other class, preserving value semantics.
   ///
@@ -287,73 +290,100 @@ namespace dynalog {
     ///
     /// Object is stored internally if size is permitted, externally otherwise.
     ///
-    /// @tparam T Type of object to construct.
+    /// @tparam Type Type of object to construct.
     /// @tparam Args Parameter pack of arguments for the constructor.
     /// @param args Arguments for the constructor.
     ///
-    template < typename T, typename ...Args >
+    template < typename Type, typename ...Args >
     void emplace( Args && ...args )
     {
-      construct<T>( super::buffer_size( Capacity ), std::forward<Args>( args )... );
+      construct<Type>( super::buffer_size( Capacity ), std::forward<Args>( args )... );
     }
 
-    /// Copy assign from another erasure.
+    /// Copy/move assign from another erasure.
     ///
-    Erasure & operator = ( const BasicErasure & other )
+    template < typename OtherErasure, typename =
+      typename std::enable_if<is_erasure<typename std::decay<OtherErasure>::type>::value>::type >
+    Erasure & operator = ( OtherErasure && other )
     {
-      other.interface<ObjectInterface>().copy_to( *this, super::buffer_size( Capacity ) );
-      return * this;
-    }
-
-    /// Move assign from another erasure.
-    ///
-    Erasure & operator = ( BasicErasure && other )
-    {
-      other.interface<ObjectInterface>().move_to( *this, super::buffer_size( Capacity ) );
-      return * this;
+      return assign_from( std::forward<OtherErasure>( other ) );
     }
 
     /// Assign an erasure, capturing another value.
     ///
-    template < typename T, typename Base = typename std::decay<T>::type,
-      typename = typename std::enable_if<!std::is_same<Erasure,Base>::value>::type >
-    Erasure & operator = ( T && value )
+    template < typename Arg, typename Type = typename std::decay<Arg>::type,
+      typename = typename std::enable_if<!is_erasure<Type>::value>::type >
+    Erasure & operator = ( Arg && value )
     {
-      emplace<Base>( std::forward<T>( value ) );
+      emplace<Type>( std::forward<Arg>( value ) );
       return *this;
+    }
+
+    Erasure & operator = ( const Erasure & other ) { return assign_from( other ); }
+    Erasure & operator = ( Erasure && other ) { return assign_from( std::move( other ) ); }
+
+    Erasure( const Erasure & other )
+    : Erasure()
+    {
+      assign_from( other );
+    }
+
+    Erasure( Erasure && other )
+    : Erasure()
+    {
+      assign_from( std::move( other ) );
     }
 
     Erasure()
     : BasicErasure()
     {}
 
-    /// Copy construct from another erasure.
+    /// Copy/move construct from another erasure.
     ///
-    Erasure( BasicErasure & other )
+    template < typename OtherErasure, typename = 
+      typename std::enable_if<is_erasure<typename std::decay<OtherErasure>::type>::value>::type >
+    Erasure( OtherErasure && other )
     : Erasure()
     {
-      other.interface<ObjectInterface>().copy_to( *this, super::buffer_size( Capacity ) );
-    }
-
-    /// Move construct from another erasure.
-    ///
-    Erasure( BasicErasure && other )
-    : Erasure()
-    {
-      other.interface<ObjectInterface>().move_to( *this, super::buffer_size( Capacity ) );
+      assign_from( std::forward<OtherErasure>( other ) );
     }
 
     /// Construct an erasure, capturing another value.
     ///
-    template < typename T, typename Base = typename std::decay<T>::type,
-      typename = typename std::enable_if<!std::is_same<BasicErasure,Base>::value>::type >
-    Erasure( T && value )
+    template < typename Arg, typename Type = typename std::decay<Arg>::type,
+      typename = typename std::enable_if<!is_erasure<Type>::value>::type >
+    Erasure( Arg && value )
     : Erasure()
     {
-      emplace<Base>( std::forward<T>( value ) );
+      emplace<Type>( std::forward<Arg>( value ) );
     }
 
    protected:
+    template < size_t N >
+    friend class Erasure;
+    
+    template < typename OtherErasure, typename =
+      typename std::enable_if<is_erasure<typename std::decay<OtherErasure>::type>::value>::type >
+    Erasure & assign_from( OtherErasure && other )
+    {
+      if( std::is_rvalue_reference<decltype(other)>::value )
+      {
+        other.interface<ObjectInterface>().move_to( *this, super::buffer_size( Capacity ) );
+        //other = nullptr;
+      }
+      else
+      {
+        other.interface<ObjectInterface>().copy_to( *this, super::buffer_size( Capacity ) );
+      }
+      return * this;
+    }
+
     uint8_t buffer[ super::buffer_size( Capacity ) ];
   };
+
+  template < size_t Capacity >
+  struct is_erasure<Erasure<Capacity>> : std::true_type {};
+
+  template <>
+  struct is_erasure<details::BasicErasure> : std::true_type {};
 }
