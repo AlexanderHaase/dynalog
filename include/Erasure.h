@@ -30,7 +30,6 @@ namespace dynalog {
     /// TODO: Gracefully handle erasures of mixed capacity.
     /// TODO: Handle proxying concepts as mix-ins(perhaps via CRTP).
     ///
-    template < size_t Capacity >
     class BasicErasure {
      public:
   
@@ -54,63 +53,20 @@ namespace dynalog {
       template < typename T >
       const T & as() const { return interface<ObjectInterface>().as<T>(); }
 
-      /// Construct a new object in the erasure.
-      ///
-      /// Object is stored internally if size is permitted, externally otherwise.
-      ///
-      /// @tparam T Type of object to construct.
-      /// @tparam Args Parameter pack of arguments for the constructor.
-      /// @param args Arguments for the constructor.
-      ///
-      template < typename T, typename ...Args >
-      void emplace( Args && ...args )
-      {
-        if( InternalObject<T>::size() <= size )
-        {
-          replace<InternalObject<T>>( std::forward<Args>( args )... );
-        }
-        else
-        {
-          replace<ExternalObject<T>>( std::forward<Args>( args )... );
-        }
-      }
-
       /// Get reflection information for the contained object.
       ///
       Reflection reflect() const { return interface<ObjectInterface>().reflect(); }
 
       /// Construct an empty erasure
       ///
-      BasicErasure( nullptr_t = nullptr )
+      BasicErasure()
       {
         new ( buffer() ) NullObject{};
       }
 
-      /// Copy construct from another erasure.
-      ///
-      BasicErasure( const BasicErasure & other )
+      BasicErasure( nullptr_t )
       : BasicErasure()
-      {
-        other.interface<ObjectInterface>().copy_to( *this );
-      }
-
-      /// Move construct from another erasure.
-      ///
-      BasicErasure( BasicErasure && other )
-      : BasicErasure()
-      {
-        other.interface<ObjectInterface>().move_to( *this );
-      }
-
-      /// Construct an erasure, capturing another value.
-      ///
-      template < typename T, typename Base = typename std::decay<T>::type,
-        typename = typename std::enable_if<!std::is_same<BasicErasure,Base>::value>::type >
-      BasicErasure( T && value )
-      : BasicErasure()
-      {
-        emplace<Base>( std::forward<T>( value ) );
-      }
+      {}
 
       /// Clear erasure via nullptr assignment.
       ///
@@ -118,32 +74,6 @@ namespace dynalog {
       {
         replace<NullObject>();
         return * this;
-      }
-
-      /// Copy assign from another erasure.
-      ///
-      BasicErasure & operator = ( const BasicErasure & other )
-      {
-        other.interface<ObjectInterface>().copy_to( *this );
-        return * this;
-      }
-
-      /// Move assign from another erasure.
-      ///
-      BasicErasure & operator = ( BasicErasure && other )
-      {
-        other.interface<ObjectInterface>().move_to( *this );
-        return * this;
-      }
-
-      /// Assign an erasure, capturing another value.
-      ///
-      template < typename T, typename Base = typename std::decay<T>::type,
-        typename = typename std::enable_if<!std::is_same<BasicErasure,Base>::value>::type >
-      BasicErasure & operator = ( T && value )
-      {
-        emplace<Base>( std::forward<T>( value ) );
-        return *this;
       }
 
       /// Destroy the erasure contents.
@@ -164,8 +94,8 @@ namespace dynalog {
         template < typename T >
         const T & as() const { return *reinterpret_cast<const T*>( object() ); }
 
-        virtual void copy_to( BasicErasure & ) const = 0;
-        virtual void move_to( BasicErasure & ) = 0;
+        virtual void copy_to( BasicErasure &, size_t capacity ) const = 0;
+        virtual void move_to( BasicErasure &, size_t capacity ) = 0;
 
         virtual Reflection reflect() const = 0;
 
@@ -192,14 +122,14 @@ namespace dynalog {
           new ( this + 1 ) T{ std::forward<Args>( args )... };
         }
 
-        virtual void copy_to( BasicErasure & other ) const override
+        virtual void copy_to( BasicErasure & other, size_t capacity ) const override
         {
-          other.emplace<T>( as<T>() );
+          other.construct<T>( capacity, as<T>() );
         }
 
-        virtual void move_to( BasicErasure & other ) override
+        virtual void move_to( BasicErasure & other, size_t capacity ) override
         {
-          other.emplace<T>( std::move( as<T>() ) );
+          other.construct<T>( capacity, std::move( as<T>() ) );
         }
 
         virtual Reflection reflect() const override
@@ -228,12 +158,12 @@ namespace dynalog {
 
         ExternalObject( ExternalObject && ) = default;
 
-        virtual void copy_to( BasicErasure & other ) const override
+        virtual void copy_to( BasicErasure & other, size_t capacity ) const override
         {
-          other.emplace<T>( as<T>() );
+          other.construct<T>( capacity, as<T>() );
         }
 
-        virtual void move_to( BasicErasure & other ) override
+        virtual void move_to( BasicErasure & other, size_t ) override
         {
           other.replace<ExternalObject<T>>( std::move( *this ) );
         }
@@ -257,12 +187,12 @@ namespace dynalog {
 
         virtual ~NullObject() = default;
 
-        virtual void copy_to( BasicErasure & other ) const override
+        virtual void copy_to( BasicErasure & other, size_t ) const override
         {
           other.replace<NullObject>();
         }
 
-        virtual void move_to( BasicErasure & other ) override
+        virtual void move_to( BasicErasure & other, size_t ) override
         {
           other.replace<NullObject>();
         }
@@ -287,6 +217,28 @@ namespace dynalog {
       template < typename T >
       const T & interface() const { return *reinterpret_cast<const T*>( buffer() ); }
 
+      
+      /// Construct a new object in the erasure.
+      ///
+      /// Object is stored internally if size is permitted, externally otherwise.
+      ///
+      /// @tparam T Type of object to construct.
+      /// @tparam Args Parameter pack of arguments for the constructor.
+      /// @param args Arguments for the constructor.
+      ///
+      template < typename T, typename ...Args >
+      void construct( size_t capacity, Args && ...args )
+      {
+        if( InternalObject<T>::size() <= capacity )
+        {
+          replace<InternalObject<T>>( std::forward<Args>( args )... );
+        }
+        else
+        {
+          replace<ExternalObject<T>>( std::forward<Args>( args )... );
+        }
+      }
+
       template < typename T, typename ...Args >
       void replace( Args && ...args )
       {
@@ -297,7 +249,10 @@ namespace dynalog {
       void * buffer() { return this; }
       const void * buffer() const { return this; }
 
-      static constexpr size_t size = max( Capacity + NullObject::size(), ExternalObject<int>::size() );
+      static constexpr size_t buffer_size( size_t capacity )
+      {
+        return max( capacity + NullObject::size(), ExternalObject<int>::size() );
+      }
     };
   }
 
@@ -321,13 +276,84 @@ namespace dynalog {
   /// TODO: Handle proxying concepts as mix-ins(perhaps via CRTP).
   ///
   template < size_t Capacity >
-  class Erasure : public details::BasicErasure< Capacity > {
+  class Erasure : public details::BasicErasure {
    public:
-    using super = details::BasicErasure< Capacity >;
+    using super = details::BasicErasure;
     using super::super;
     using super::operator =;
     using super::Location;
+
+    /// Construct a new object in the erasure.
+    ///
+    /// Object is stored internally if size is permitted, externally otherwise.
+    ///
+    /// @tparam T Type of object to construct.
+    /// @tparam Args Parameter pack of arguments for the constructor.
+    /// @param args Arguments for the constructor.
+    ///
+    template < typename T, typename ...Args >
+    void emplace( Args && ...args )
+    {
+      construct<T>( super::buffer_size( Capacity ), std::forward<Args>( args )... );
+    }
+
+    /// Copy assign from another erasure.
+    ///
+    Erasure & operator = ( const BasicErasure & other )
+    {
+      other.interface<ObjectInterface>().copy_to( *this, super::buffer_size( Capacity ) );
+      return * this;
+    }
+
+    /// Move assign from another erasure.
+    ///
+    Erasure & operator = ( BasicErasure && other )
+    {
+      other.interface<ObjectInterface>().move_to( *this, super::buffer_size( Capacity ) );
+      return * this;
+    }
+
+    /// Assign an erasure, capturing another value.
+    ///
+    template < typename T, typename Base = typename std::decay<T>::type,
+      typename = typename std::enable_if<!std::is_same<Erasure,Base>::value>::type >
+    Erasure & operator = ( T && value )
+    {
+      emplace<Base>( std::forward<T>( value ) );
+      return *this;
+    }
+
+    Erasure()
+    : BasicErasure()
+    {}
+
+    /// Copy construct from another erasure.
+    ///
+    Erasure( BasicErasure & other )
+    : Erasure()
+    {
+      other.interface<ObjectInterface>().copy_to( *this, super::buffer_size( Capacity ) );
+    }
+
+    /// Move construct from another erasure.
+    ///
+    Erasure( BasicErasure && other )
+    : Erasure()
+    {
+      other.interface<ObjectInterface>().move_to( *this, super::buffer_size( Capacity ) );
+    }
+
+    /// Construct an erasure, capturing another value.
+    ///
+    template < typename T, typename Base = typename std::decay<T>::type,
+      typename = typename std::enable_if<!std::is_same<BasicErasure,Base>::value>::type >
+    Erasure( T && value )
+    : Erasure()
+    {
+      emplace<Base>( std::forward<T>( value ) );
+    }
+
    protected:
-    uint8_t buffer[ super::size ];
+    uint8_t buffer[ super::buffer_size( Capacity ) ];
   };
 }
