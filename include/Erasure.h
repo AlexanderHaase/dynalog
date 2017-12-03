@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <memory>
+#include <type_traits>
 #include <dynalog/include/Reflection.h>
 #include <dynalog/include/Demangle.h>
 
@@ -407,7 +408,7 @@ namespace dynalog {
       return * this;
     }
 
-    uint8_t buffer[ super::buffer_size( Capacity ) ];
+    typename std::aligned_storage<super::buffer_size( Capacity )>::type storage;
   };
 
   template < size_t Capacity >
