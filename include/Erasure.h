@@ -3,7 +3,6 @@
 #include <memory>
 #include <dynalog/include/Reflection.h>
 #include <dynalog/include/Demangle.h>
-#include <iostream>
 
 namespace dynalog {
 
@@ -33,6 +32,16 @@ namespace dynalog {
     ///
     class BasicErasure {
      public:
+      class OperationException final : public std::exception {
+       public:
+        OperationException( const std::type_info & type, const char * operation )
+        : message( demangle( type ) + "does not support operation " + operation )
+        {}
+
+        virtual const char * what() const noexcept override { return message.c_str(); }
+       protected:
+        const std::string message;
+      };
   
       enum class Location {
         Internal,
@@ -107,35 +116,64 @@ namespace dynalog {
         virtual const void * object() const = 0;
       };
 
+      template < typename Type, bool Copyble = std::is_copy_constructible<Type>::value >
+      struct CopyOperation : ObjectInterface
+      {
+        virtual void copy_to( BasicErasure &, size_t ) const override
+        {
+          throw OperationException( typeid(Type), "copy construction" );
+        }
+        virtual Reflection reflect() const override
+        {
+          return Reflection{ as<Type>() };
+        }
+      };
+
+      template < typename Type >
+      struct CopyOperation<Type, true> : ObjectInterface
+      {
+        virtual void copy_to( BasicErasure & other, size_t capacity ) const override
+        {
+          other.construct<Type>( capacity, as<Type>() );
+        }
+        virtual Reflection reflect() const override
+        {
+          return Reflection{ as<Type>() };
+        }
+      };
+
+      template < typename Type, bool Movable = std::is_move_constructible<Type>::value >
+      struct MoveOperation : CopyOperation<Type>
+      {
+        virtual void move_to( BasicErasure &, size_t ) override
+        {
+          throw OperationException( typeid(Type), "move construction" );
+        }
+      };
+
+      template < typename Type >
+      struct MoveOperation<Type, true> : CopyOperation<Type>
+      {
+        virtual void move_to( BasicErasure & other, size_t capacity ) override
+        {
+          other.construct<Type>( capacity, std::move( ObjectInterface::as<Type>() ) );
+        }
+      };
+
       template <typename Type>
-      class InternalObject final : public ObjectInterface {
+      class InternalObject final : public MoveOperation<Type> {
        public:
         static constexpr size_t size() { return sizeof(InternalObject) + sizeof(Type); }
 
         virtual ~InternalObject()
         {
-          as<Type>().~Type();
+          ObjectInterface::as<Type>().~Type();
         }
 
         template < typename ...Args >
         InternalObject( Args && ...args )
         {
           new ( this + 1 ) Type{ std::forward<Args>( args )... };
-        }
-
-        virtual void copy_to( BasicErasure & other, size_t capacity ) const override
-        {
-          other.construct<Type>( capacity, as<Type>() );
-        }
-
-        virtual void move_to( BasicErasure & other, size_t capacity ) override
-        {
-          other.construct<Type>( capacity, std::move( as<Type>() ) );
-        }
-
-        virtual Reflection reflect() const override
-        {
-          return Reflection{ as<Type>() };
         }
 
         virtual Location location() const override { return Location::Internal; }
@@ -146,7 +184,7 @@ namespace dynalog {
       };
 
       template <typename Type>
-      class ExternalObject final : public ObjectInterface {
+      class ExternalObject final : public CopyOperation<Type> {
        public:
         static constexpr size_t size() { return sizeof(ExternalObject); }
 
@@ -158,20 +196,9 @@ namespace dynalog {
         {}
 
         ExternalObject( ExternalObject && ) = default;
-
-        virtual void copy_to( BasicErasure & other, size_t capacity ) const override
-        {
-          other.construct<Type>( capacity, as<Type>() );
-        }
-
         virtual void move_to( BasicErasure & other, size_t ) override
         {
           other.replace<ExternalObject<Type>>( std::move( *this ) );
-        }
-
-        virtual Reflection reflect() const override
-        {
-          return Reflection{ as<Type>() };
         }
 
         virtual Location location() const override { return Location::External; }
@@ -255,6 +282,8 @@ namespace dynalog {
       }
     };
   }
+
+  using ErasureException = details::BasicErasure::OperationException;
 
   template < typename Type >
   struct is_erasure : std::false_type {};

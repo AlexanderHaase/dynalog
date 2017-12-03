@@ -1,8 +1,6 @@
 #include <catch.hpp>
+#include <atomic>
 #include <dynalog/include/Erasure.h>
-#include <sstream>
-#include <iostream>
-
 
 SCENARIO( "erasures should provide value semantics for captured objects" )
 {
@@ -196,6 +194,33 @@ SCENARIO( "erasures should provide value semantics for captured objects" )
       REQUIRE( erasures.large.location() == BasicErasure::Location::Internal );
       erasures.large = std::move( erasures.small );
       REQUIRE( erasures.large.location() == BasicErasure::Location::External );
+    }
+
+    THEN( "erasures should throw trying to copy non-copyable values" )
+    {
+      erasures.small.emplace<std::unique_ptr<int>>( new int{ 5 } );
+      bool threw = false;
+      try {
+        erasures.large = erasures.small;
+      } catch( dynalog::ErasureException e )
+      {
+        threw = true;
+      }
+      REQUIRE( threw );
+      erasures.large = std::move( erasures.small );
+    }
+
+    THEN( "erasures should throw trying to move non-movable values" )
+    {
+      erasures.small.emplace<std::atomic<int>>( 0 );
+      bool threw = false;
+      try {
+        erasures.large = std::move( erasures.small );
+      } catch( dynalog::ErasureException e )
+      {
+        threw = true;
+      }
+      REQUIRE( threw );
     }
   }
 }
