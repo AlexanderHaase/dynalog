@@ -309,20 +309,4 @@ namespace dynalog {
 		clock::duration uncertainty;
 		std::map<std::string,Target> targets;
 	};
-
-/*
-		void log( std::ostream & stream, double baseline )
-		{
-			for( auto && result : results )
-			{
-				auto & tag = std::get<0>( result );
-				auto usec = std::get<1>( result );
-				auto relative = baseline / usec;
-				stream << std::setprecision( 5 ) << std::fixed << usec << " usec/call (";
-				stream << std::setprecision( 2 ) << std::fixed << relative;
-				stream << " x)\t" << tag << std::endl;
-			}
-		}
-	};
-*/
  }

@@ -19,10 +19,10 @@ namespace dynalog {
 
     /// Reference counting base class that applies an action when count reaches zero.
     ///
-    /// @tparam T type of parent class: 'class Parent : arc::Object<Parent>'
+    /// @tparam Type type of parent class: 'class Parent : arc::Object<Parent>'
     /// @tparam Action functor to apply when reference count reaches zero.
     ///
-    template < typename T , typename Action = std::default_delete<T> >
+    template < typename Type , typename Action = std::default_delete<Type> >
     class Object : protected Action {
      public:
 
@@ -32,7 +32,7 @@ namespace dynalog {
 
       /// Increment the reference count.
       ///
-      friend T * acquire( T * object )
+      friend Type * acquire( Type * object )
       {
         if( object )
         {
@@ -43,7 +43,7 @@ namespace dynalog {
 
       /// Decrement the reference count, applying the action if count becomes zero.
       ///
-      friend void release( T * object )
+      friend void release( Type * object )
       {
         if( object )
         {
@@ -63,7 +63,7 @@ namespace dynalog {
     ///
     /// Expects types with acquire() and release() methods.
     ///
-    template < typename T>
+    template < typename Type>
     class Pointer {
      public:
 
@@ -71,15 +71,15 @@ namespace dynalog {
       ///
       /// @return raw pointer value.
       ///
-      T * get() const { return ptr; }
+      Type * get() const { return ptr; }
 
       /// Pointer method access operator.
       ///
-      T * operator -> () const { return get(); }
+      Type * operator -> () const { return get(); }
 
       /// Pointer dereference operator.
       /// 
-      T & operator * () const { return get(); }
+      Type & operator * () const { return get(); }
 
       /// Create an empty pointer
       ///
@@ -95,7 +95,7 @@ namespace dynalog {
 
       /// Construct a pointer from a raw pointer.
       ///
-      Pointer( T * buffer )
+      Pointer( Type * buffer )
       : ptr( acquire( buffer ) )
       {}
 
@@ -134,7 +134,7 @@ namespace dynalog {
 
       /// Assign pointer from raw pointer.
       ///
-      Pointer & operator = ( T * buffer )
+      Pointer & operator = ( Type * buffer )
       {
         release( ptr );
         ptr = acquire( buffer );
@@ -157,7 +157,7 @@ namespace dynalog {
         release( ptr );
       }
      protected:
-      T * ptr;  ///< Internal managed pointer.
+      Type * ptr;  ///< Internal managed pointer.
     };
 
     /// Equality operator for two pointer types.
@@ -259,5 +259,63 @@ namespace dynalog {
     {
       return a.get() != nullptr;
     }
+
+    /*
+    template < typename Type, typename Create = std::function<Pointer<Type>(void)>, typename Delete = std::default_delete<T> >
+    class Cache : public Object<Cache> {
+     public:
+      class Action {
+       public:
+        void operator() ( Type * object ) const
+        {
+          if( cache )
+          {
+            cache->insert( object );
+          }
+          else
+          {
+            Delete{}( object );
+          }
+        }
+       protected:
+        friend class Cache;
+        Pointer<Cache> cache;
+      };
+
+      void insert( Type * object )
+      {
+        if( objects.size() < objects.capacity() )
+        {
+          objects.emplace_back( object );
+          object->action().cache = nullptr;
+        }
+        else
+        {
+          Delete{}( object );
+        }
+      }
+
+      Pointer<Type> remove()
+      {
+        Pointer<Type> result;
+        if( objects.size() )
+        {
+          result = std::move( objects.back() ):
+          objects.pop_back();
+        }
+        else
+        {
+          result = create();
+        }
+        result->action().cache = this;
+        return result;
+      }
+
+      Cache( 
+     protected:
+      std::vector<Pointer<Type>> objects;
+      std::function<Pointer<Type>(void)> create;
+    };
+    */
   }
 }

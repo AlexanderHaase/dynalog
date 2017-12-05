@@ -14,8 +14,8 @@ cpp_flags = [ '-std=c++11',
 	'-Wshadow',
 	'-Wformat=2',
   #'-flto', # Does not play well with clang
-	#'-Ofast'
-  '-O0'
+	'-Ofast'
+  #'-O0'
   ]
 
 cpp_lint_flags = [
