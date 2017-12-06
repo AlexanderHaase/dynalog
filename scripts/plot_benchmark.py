@@ -5,8 +5,23 @@ import os.path
 import json
 import numpy
 import matplotlib
+import itertools
+import collections
+import math
+
 #matplotlib.use( 'SVG' )
 from matplotlib import pyplot
+
+def consume(iterator, n = None):
+  "Advance the iterator n-steps ahead. If n is none, consume entirely."
+  # Use functions that consume iterators at C speed.
+  if n is None:
+    # feed the entire iterator into a zero-length deque
+    collections.deque(iterator, maxlen=0)
+  else:
+    # advance to the empty slice starting at position n
+    next(itertools.islice(iterator, n, n), None)
+  return iterator
 
 def count( iterable ):
   return sum( 1 for item in iterable )
@@ -50,18 +65,63 @@ def plot_samples( title, data ):
     xlabel += ' ({:.1f}% truncated, max = {:.3e}usec)'.format( percent*100, real_max )
   pyplot.xlabel( xlabel )
   pyplot.ylabel( 'samples (x{})'.format( data[ 'iterations' ] ) )
-  pyplot.title( title )
-  pyplot.legend(loc='upper right')
+
+  # plot +-3 stdev
+  #
+  stdev_opts = dict(
+    color = 'black',
+    linewidth = 2
+  )
 
   line_y = axis.get_ylim()[ 1 ] *.95
-  pyplot.axvline( mean, linestyle = '-', linewidth = 2, color = 'black' )
+  pyplot.axvline( mean, linestyle = '-', **stdev_opts )
   pyplot.text( mean + bin_width/2, line_y, 'mean: {:.3e}'.format( mean ), rotation = 90 )
 
-  pyplot.axvline( mean + 3 * stdev, linestyle = '--', linewidth = 2, color = 'black' )
+  pyplot.axvline( mean + 3 * stdev, linestyle = '--', **stdev_opts )
   pyplot.text( mean + 3 * stdev + bin_width/2, line_y, '+3 stdev: {:.3e}'.format( mean + 3 * stdev ), rotation = 90 )
-  pyplot.axvline( mean - 3 * stdev, linestyle = '--', linewidth = 2, color = 'black' )
+  pyplot.axvline( mean - 3 * stdev, linestyle = '--', **stdev_opts )
   pyplot.text( mean - 3 * stdev + bin_width/2, line_y, '-3 stdev: {:.3e}'.format( mean - 3 * stdev ), rotation = 90 )
 
+  # plot percentiles
+  #
+  sorted_data = sorted( samples() )
+
+  axis2 = axis.twinx()
+  axis2.hist( sorted_data, label = "cumulative",cumulative=1, histtype='step', color='orange', **plot_opts )
+  axis2.set_ylabel( "percentile" )
+  axis2.set_ylim( ( 0, data['count'] ) )
+  axis2.set_yticks( numpy.linspace( 0, data['count'], 11 ) )
+  axis2.set_yticklabels( list( map( "{}%".format, range(0,110,10) ) ) )
+
+  percentile_opts = dict(
+    color = 'blue',
+    linestyle = ':',
+    linewidth = 1
+  )
+
+  percentiles = [ .5, .75, .9, .99 ]
+  indicies = [ math.floor(data['count'] * percentile) for percentile in percentiles ]
+
+  prior_xaxis = axis2.get_xlim()
+  limit = axis2.get_xlim()[ 1 ];
+  for index in indicies:
+    value = sorted_data[ index ]
+    if value < limit:
+      x = numpy.linspace( value, limit, 10 )
+      y = numpy.repeat( index, 10 )
+      axis2.plot( x, y, **percentile_opts )
+      x = numpy.repeat( value, 10 )
+      y = numpy.linspace( 0, index, 10 )
+      axis2.plot( x, y, **percentile_opts )
+  axis2.set_xlim( prior_xaxis )
+
+  # legend and title
+  legends, labels = axis.get_legend_handles_labels()
+  legends2, labels2 = axis2.get_legend_handles_labels()
+  legends.extend( legends2 )
+  labels.extend( labels2 )  
+  pyplot.title( title )
+  pyplot.legend( legends, labels, loc='right')
 
 def plot_comparison( records ):
   values = list( map( lambda item: item[ 1 ][ 'mean(usec)' ], records ) )
