@@ -10,6 +10,7 @@ import collections
 import math
 
 #matplotlib.use( 'SVG' )
+import sklearn.mixture
 from matplotlib import pyplot
 
 def consume(iterator, n = None):
@@ -25,6 +26,36 @@ def consume(iterator, n = None):
 
 def count( iterable ):
   return sum( 1 for item in iterable )
+
+
+def model_distribution( title, data ):
+  get_elapsed = lambda obj: obj[ 'elapsed' ]
+  samples = numpy.fromiter( map( get_elapsed, data[ 'samples' ] ), numpy.double )
+  samples.sort()
+
+  hist, bins = numpy.histogram( samples, 100 )
+
+  figure, axis = pyplot.subplots()
+
+  #xy = numpy.zeros( shape = (len(hist),2) )
+  #for index in range(0,len(hist)):
+  #  center =  numpy.mean( bins[ index : index + 1 ] )
+  #  xy[ index ] = [ center, hist[ index ] ]
+
+  xy = numpy.zeros( shape = (len(samples),2) )
+  xy[:,0] = samples
+  #  center =  numpy.mean( bins[ index : index + 1 ] )
+  #  xy[ index ] = [ center, hist[ index ] ]
+  
+  #print( xy )
+
+  gmm = sklearn.mixture.GMM( n_components=4 ).fit( xy )
+  labels = gmm.predict( xy )
+  x = samples
+  y = numpy.arange( data['count'] )
+  #pyplot.scatter( xy[:,0], xy[:,1], c=labels, s=40 )
+  pyplot.scatter( x, y, c=labels, s=40, linewidth = 0 )
+
 
 def plot_samples( title, data ):
   mean = data[ 'mean(usec)' ]
@@ -186,6 +217,8 @@ if __name__ == '__main__':
   action()
 
   for item in records:
+    model_distribution( *item )
+    action()
     plot_samples( *item )
     action()
 
