@@ -11,7 +11,7 @@ import math
 
 #matplotlib.use( 'SVG' )
 import sklearn.mixture
-from matplotlib import pyplot
+from matplotlib import pyplot, mlab
 
 def consume(iterator, n = None):
   "Advance the iterator n-steps ahead. If n is none, consume entirely."
@@ -33,28 +33,22 @@ def model_distribution( title, data ):
   samples = numpy.fromiter( map( get_elapsed, data[ 'samples' ] ), numpy.double )
   samples.sort()
 
-  hist, bins = numpy.histogram( samples, 100 )
-
-  figure, axis = pyplot.subplots()
-
-  #xy = numpy.zeros( shape = (len(hist),2) )
-  #for index in range(0,len(hist)):
-  #  center =  numpy.mean( bins[ index : index + 1 ] )
-  #  xy[ index ] = [ center, hist[ index ] ]
-
   xy = numpy.zeros( shape = (len(samples),2) )
   xy[:,0] = samples
-  #  center =  numpy.mean( bins[ index : index + 1 ] )
-  #  xy[ index ] = [ center, hist[ index ] ]
-  
-  #print( xy )
 
-  gmm = sklearn.mixture.GMM( n_components=4 ).fit( xy )
-  labels = gmm.predict( xy )
-  x = samples
-  y = numpy.arange( data['count'] )
-  #pyplot.scatter( xy[:,0], xy[:,1], c=labels, s=40 )
-  pyplot.scatter( x, y, c=labels, s=40, linewidth = 0 )
+  components_range = numpy.arange( 1,10 )
+  models = [ sklearn.mixture.GMM( n ).fit(xy) for n in components_range ]
+  components, model = min( enumerate( models ), key = lambda item: item[ 1 ].aic(xy) )
+  gmm = model #sklearn.mixture.GMM( n_components=4 ).fit( xy )
+  print( "{} : {}".format( title, components ) )
+
+  #figure, axis = pyplot.subplots()
+  #labels = gmm.predict( xy )
+  #x = samples
+  #y = numpy.arange( data['count'] )
+  #pyplot.scatter( x, y, c=labels, s=40, linewidth = 0 )
+
+  return model
 
 
 def plot_samples( title, data ):
@@ -97,6 +91,19 @@ def plot_samples( title, data ):
   pyplot.xlabel( xlabel )
   pyplot.ylabel( 'samples (x{})'.format( data[ 'iterations' ] ) )
 
+  # plot gaussian mixture
+  #
+  model = model_distribution( title, data )
+  gaussians = list( zip( model.means_, model.covars_, model.weights_ ) )
+  x = numpy.linspace( min_value, max_value, 100 )
+
+  for gaussian in gaussians:
+    g_mean = gaussian[ 0 ][ 0 ]
+    g_covar = gaussian[ 1 ][ 0 ]
+    g_weight = gaussian[ 2 ]
+    print( "{} {} {}".format( g_mean, g_covar, g_weight ) )
+    axis.plot( x, mlab.normpdf( x, g_mean, math.sqrt(g_covar)), label = 'gassian' )
+
   # plot +-3 stdev
   #
   stdev_opts = dict(
@@ -119,6 +126,7 @@ def plot_samples( title, data ):
 
   axis2 = axis.twinx()
   axis2.hist( sorted_data, label = "cumulative",cumulative=1, histtype='step', color='orange', **plot_opts )
+  #axis2.plot( sorted_data, numpy.arange(data['count']), label = 'cumulative', color = 'oragne', **plot_opts )
   axis2.set_ylabel( "percentile" )
   axis2.set_ylim( ( 0, data['count'] ) )
   axis2.set_yticks( numpy.linspace( 0, data['count'], 11 ) )
@@ -152,7 +160,7 @@ def plot_samples( title, data ):
   legends.extend( legends2 )
   labels.extend( labels2 )  
   pyplot.title( title )
-  pyplot.legend( legends, labels, loc='right')
+  pyplot.legend( legends, labels, loc='upper left')
 
 def plot_comparison( records ):
   values = list( map( lambda item: item[ 1 ][ 'mean(usec)' ], records ) )
@@ -184,6 +192,7 @@ def plot_comparison( records ):
 
 def action_show():
   pyplot.show()
+  pyplot.close()
 
 class action_save( object ):
   def __init__( self, path, suffix = 'png' ):
@@ -195,6 +204,7 @@ class action_save( object ):
     file_name = "{}.{}".format( self.index, self.suffix )
     file_path = os.path.join( self.path, file_name )
     pyplot.savefig( file_path )
+    pyplot.close()
     self.index += 1
     
 
@@ -217,8 +227,8 @@ if __name__ == '__main__':
   action()
 
   for item in records:
-    model_distribution( *item )
-    action()
+    #model_distribution( *item )
+    #action()
     plot_samples( *item )
     action()
 
