@@ -7,10 +7,15 @@ import numpy
 import matplotlib
 import itertools
 import collections
+import functools
 import math
 
-#matplotlib.use( 'SVG' )
 import sklearn.mixture
+import sklearn.neighbors
+import sklearn.grid_search
+import sklearn.cross_validation
+import scipy.signal
+import scipy.stats
 from matplotlib import pyplot, mlab
 
 def consume(iterator, n = None):
@@ -27,29 +32,55 @@ def consume(iterator, n = None):
 def count( iterable ):
   return sum( 1 for item in iterable )
 
+class linear_model( object ):
 
-def model_distribution( title, data ):
-  get_elapsed = lambda obj: obj[ 'elapsed' ]
-  samples = numpy.fromiter( map( get_elapsed, data[ 'samples' ] ), numpy.double )
-  samples.sort()
+  def __init__( self, m, b ):
+    self.m = m
+    self.b = b
 
-  xy = numpy.zeros( shape = (len(samples),2) )
-  xy[:,0] = samples
+  @classmethod 
+  def fit( cls, a, b ):
+    m = ( a[ 1 ] - b[ 1 ] ) / ( a[ 0 ] - b[ 0 ] )
+    b = a[ 1 ] - a[ 0 ] * m
+    return cls( m, b )
 
-  components_range = numpy.arange( 1,10 )
-  models = [ sklearn.mixture.GMM( n ).fit(xy) for n in components_range ]
-  components, model = min( enumerate( models ), key = lambda item: item[ 1 ].aic(xy) )
-  gmm = model #sklearn.mixture.GMM( n_components=4 ).fit( xy )
-  print( "{} : {}".format( title, components ) )
+  def __call__( self, value ):
+    return self.evalutate( value )
 
-  #figure, axis = pyplot.subplots()
-  #labels = gmm.predict( xy )
-  #x = samples
-  #y = numpy.arange( data['count'] )
-  #pyplot.scatter( x, y, c=labels, s=40, linewidth = 0 )
+  def evaluate( self, value ):
+    return self.m * value + self.b
 
-  return model
+  def invert( self ):
+    b = -(self.b/self.m)
+    m = 1.0/self.m
+    return linear_model( m, b )
 
+  def sign( self ):
+    return numpy.sign( self.m )
+
+  def zero( self ):
+    return self.invert().evaluate( 0.0 )
+
+def interpolate_zero_crossings( series, threshold = 0 ):
+  prior = next( series )
+
+  results = []
+
+  suppress = abs( prior[ 1 ] ) < threshold
+  for value in series:
+    if suppress and abs( value[ 1 ] ) >= threshold:
+      suppress = False
+      #print( "trigger: {}".format(value) )
+
+    if not suppress:
+      if (prior[ 1 ] < 0 and value[ 1 ] > 0) or (prior[ 1 ] > 0 and value[ 1 ] < 0):
+        model = linear_model.fit( prior, value )
+        results.append( ( model.zero(), model.sign() ) )
+        #print( "cross: {} {}".format(value, prior) )
+        suppress = True
+    prior = value
+
+  return results
 
 def plot_samples( title, data ):
   mean = data[ 'mean(usec)' ]
@@ -74,6 +105,8 @@ def plot_samples( title, data ):
   filtered = list( map( get_elapsed, filter( get_filtered, data[ 'samples' ] ) ) )
   bins = numpy.linspace( min_value, max_value, bin_count )
 
+  sorted_data = numpy.array(sorted( samples() ))
+
   plot_opts = dict(
     bins = bins,
     alpha = 0.5,
@@ -91,19 +124,6 @@ def plot_samples( title, data ):
   pyplot.xlabel( xlabel )
   pyplot.ylabel( 'samples (x{})'.format( data[ 'iterations' ] ) )
 
-  # plot gaussian mixture
-  #
-  model = model_distribution( title, data )
-  gaussians = list( zip( model.means_, model.covars_, model.weights_ ) )
-  x = numpy.linspace( min_value, max_value, 100 )
-
-  for gaussian in gaussians:
-    g_mean = gaussian[ 0 ][ 0 ]
-    g_covar = gaussian[ 1 ][ 0 ]
-    g_weight = gaussian[ 2 ]
-    print( "{} {} {}".format( g_mean, g_covar, g_weight ) )
-    axis.plot( x, mlab.normpdf( x, g_mean, math.sqrt(g_covar)), label = 'gassian' )
-
   # plot +-3 stdev
   #
   stdev_opts = dict(
@@ -120,14 +140,47 @@ def plot_samples( title, data ):
   pyplot.axvline( mean - 3 * stdev, linestyle = '--', **stdev_opts )
   pyplot.text( mean - 3 * stdev + bin_width/2, line_y, '-3 stdev: {:.3e}'.format( mean - 3 * stdev ), rotation = 90 )
 
+  # find peaks
+  #
+  prior_xaxis = axis.get_xlim()
+  #bandwidths = stdev * 10 ** numpy.linspace(-3, 0, 10)
+  #print( bandwidths )
+  #grid = sklearn.grid_search.GridSearchCV(sklearn.neighbors.KernelDensity(kernel='exponential'),
+  #                    {'bandwidth': bandwidths},
+  #                    cv= 2 ) #sklearn.cross_validation.LeaveOneOut(len(sorted_data)))
+  #grid.fit(sorted_data[:, None]);
+  #print( "{}: {}".format( title, grid.best_params_ ) )
+  #density_func = sklearn.neighbors.KernelDensity( kernel='exponential', **grid.best_params_ ).fit( sorted_data[:, None ] )
+  density_func = sklearn.neighbors.KernelDensity( kernel='exponential', bandwidth=stdev/2 ).fit( sorted_data[:, None ] )
+
+  x = numpy.linspace( prior_xaxis[ 0 ], prior_xaxis[ 1 ], 1000 )
+  y = numpy.exp( density_func.score_samples( x[:,None] ) )
+
+  offset = (axis.get_ylim()[ 1 ] - axis.get_ylim()[ 0 ]) * 0.4 + axis.get_ylim()[ 0 ]
+  gradient = numpy.gradient( y )
+  gradient_max = max( abs( gradient ) )
+  gradient_scale = (offset - axis.get_ylim()[ 0 ])*.5/gradient_max
+  gradient_threshold = gradient_max * .25
+  axis.plot( x, numpy.repeat( offset, len( x ) ), color = 'black', alpha = 0.5 )
+  axis.plot( x, numpy.repeat( offset + gradient_threshold * gradient_scale, len( x ) ), color = 'black', linestyle = '--', alpha = 0.5 )
+  axis.plot( x, gradient * gradient_scale + offset, label = "density gradient", alpha = 0.5, color = 'red' )
+  crossings = interpolate_zero_crossings( zip( x, gradient ), gradient_threshold )
+  peaks = filter( lambda item: item[ 1 ] < 0, crossings )
+  peaks = list( map( lambda item: item[ 0 ], peaks ) )
+  print( "{}: {}".format( title, peaks ) )
+
+  for index, peak in enumerate( peaks,1 ):
+    #axis.plot( numpy.repeat( peak, 10 ), numpy.linspace( axis.get_ylim()[ 0 ], axis.get_ylim()[ 1 ], 10 ), color = 'green', linewidth = 2, alpha = 0.5 )
+    axis.text( peak + bin_width/2, offset - (axis.get_ylim()[ 1 ] - axis.get_ylim()[ 0 ]) *.05 * index, 'peak: {:.3e}'.format( peak ), color = 'black', alpha = 0.5 )
+
   # plot percentiles
   #
-  sorted_data = sorted( samples() )
+  limit = next( filter( lambda item: item[1] >= prior_xaxis[ 1 ], enumerate( sorted_data ) ) )[ 0 ]
 
   axis2 = axis.twinx()
-  axis2.hist( sorted_data, label = "cumulative",cumulative=1, histtype='step', color='orange', **plot_opts )
-  #axis2.plot( sorted_data, numpy.arange(data['count']), label = 'cumulative', color = 'oragne', **plot_opts )
-  axis2.set_ylabel( "percentile" )
+  #axis2.hist( sorted_data, label = "cumulative",cumulative=1, histtype='step', color='orange', **plot_opts )
+  axis2.plot( sorted_data[:limit], numpy.arange(limit), label = 'cumulative', color = 'orange' )
+  axis2.set_ylabel( "percentile ({} samples of {} iterations)".format( data['count'], data['iterations'] ) )
   axis2.set_ylim( ( 0, data['count'] ) )
   axis2.set_yticks( numpy.linspace( 0, data['count'], 11 ) )
   axis2.set_yticklabels( list( map( "{}%".format, range(0,110,10) ) ) )
@@ -141,8 +194,7 @@ def plot_samples( title, data ):
   percentiles = [ .5, .75, .9, .99 ]
   indicies = [ math.floor(data['count'] * percentile) for percentile in percentiles ]
 
-  prior_xaxis = axis2.get_xlim()
-  limit = axis2.get_xlim()[ 1 ];
+  limit = prior_xaxis[ 1 ];
   for index in indicies:
     value = sorted_data[ index ]
     if value < limit:
@@ -160,7 +212,7 @@ def plot_samples( title, data ):
   legends.extend( legends2 )
   labels.extend( labels2 )  
   pyplot.title( title )
-  pyplot.legend( legends, labels, loc='upper left')
+  pyplot.legend( legends, labels, loc='lower right')
 
 def plot_comparison( records ):
   values = list( map( lambda item: item[ 1 ][ 'mean(usec)' ], records ) )
